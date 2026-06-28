@@ -1,0 +1,4 @@
+venv/
+transitpulse.db
+__pycache__/
+*.pyc
