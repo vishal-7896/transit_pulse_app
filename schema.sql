@@ -1,0 +1,39 @@
+CREATE TABLE route (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT,
+    start_terminus TEXT NOT NULL,
+    end_terminus TEXT NOT NULL,
+    frequency_minutes INTEGER DEFAULT 20
+);
+
+CREATE TABLE stop (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+name TEXT NOT NULL,
+latitude REAL,
+longitude REAL,
+landmark TEXT
+);
+
+CREATE TABLE route_stop (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+route_id INTEGER NOT NULL REFERENCES route(id),
+stop_id INTEGER NOT NULL REFERENCES stop(id),
+stop_order INTEGER NOT NULL,
+avg_travel_seconds INTEGER DEFAULT 0
+);
+
+CREATE TABLE user (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+name TEXT,
+phone TEXT UNIQUE,
+created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE sighting (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+route_stop_id INTEGER NOT NULL REFERENCES route_stop(id),
+user_id INTEGER NOT NULL REFERENCES user(id),
+seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+direction TEXT CHECK(direction IN ('forward','return'))
+);
