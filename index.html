@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>TransitPulse — Crowdsourced Live Bus ETAs</title>
+  <meta name="description" content="Real-time crowdsourced bus arrival predictions powered by live rider sightings.">
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  
+  <!-- Styles -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- App Header -->
+  <header class="app-header">
+    <div class="header-container">
+      <div class="brand">
+        <div class="logo-pulse">
+          <span class="pulse-ring"></span>
+          <span class="pulse-dot">🚌</span>
+        </div>
+        <div class="brand-text">
+          <h1>TransitPulse</h1>
+          <span class="tagline">Crowdsourced Bus ETAs</span>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <!-- API Mode Switcher -->
+        <button id="apiModeBtn" class="pill-btn mode-btn" title="Toggle Backend API / Demo Mode">
+          <span class="status-dot online"></span>
+          <span id="apiModeLabel">Live API</span>
+        </button>
+
+        <!-- User Profile / Register Button -->
+        <button id="userProfileBtn" class="pill-btn user-btn">
+          <span class="user-icon">👤</span>
+          <span id="userStatusLabel">Guest</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- API Connection Banner (shows if server offline or rate-limited) -->
+    <div id="connectionBanner" class="connection-banner hidden">
+      <span id="connectionBannerText">Connecting to backend server at http://127.0.0.1:5000...</span>
+      <button id="switchSimulatorBtn" class="text-link">Switch to Demo Mode</button>
+    </div>
+  </header>
+
+  <!-- Main Content Container -->
+  <main class="app-main">
+
+    <!-- STEP 1: ROUTE SELECTION -->
+    <section id="routeSelectionSection" class="card-section">
+      <div class="section-header">
+        <h2><span class="step-num">1</span> Select a Bus Route</h2>
+        <button id="refreshRoutesBtn" class="icon-btn" title="Refresh Routes">🔄</button>
+      </div>
+
+      <!-- Loading State -->
+      <div id="routesLoading" class="loading-box hidden">
+        <div class="spinner"></div>
+        <p>Loading active bus routes...</p>
+      </div>
+
+      <!-- Error State -->
+      <div id="routesError" class="error-box hidden">
+        <p id="routesErrorMessage">Failed to load routes from backend API.</p>
+        <button id="retryRoutesBtn" class="btn secondary-btn small-btn">Retry Connection</button>
+      </div>
+
+      <!-- Routes Grid / List -->
+      <div id="routesContainer" class="routes-grid">
+        <!-- Route Cards will be rendered dynamically by app.js -->
+      </div>
+    </section>
+
+    <!-- STEP 2: STOPS & LIVE ETA DASHBOARD -->
+    <section id="stopsAndEtaSection" class="card-section hidden">
+      <div class="route-banner">
+        <div class="active-route-info">
+          <span id="selectedRouteBadge" class="route-badge">R-101</span>
+          <div>
+            <h3 id="selectedRouteTitle">Main Street Downtown Express</h3>
+            <p id="selectedRouteSub">Select a bus stop to view real-time arrival ETAs</p>
+          </div>
+        </div>
+        <button id="changeRouteBtn" class="btn secondary-btn small-btn">Change Route</button>
+      </div>
+
+      <!-- Horizontal / Timeline Stop Selector -->
+      <div class="stops-selector-container">
+        <div class="section-subtitle">
+          <h4>Route Stops Timeline</h4>
+          <span class="stops-count" id="stopsCountLabel">0 stops</span>
+        </div>
+
+        <!-- Loading State -->
+        <div id="stopsLoading" class="loading-box hidden">
+          <div class="spinner"></div>
+          <p>Fetching stop sequence...</p>
+        </div>
+
+        <!-- Stops Horizontal Carousel / List -->
+        <div id="stopsContainer" class="stops-timeline">
+          <!-- Stop cards rendered dynamically -->
+        </div>
+      </div>
+
+      <!-- LIVE ETA DISPLAY CARD -->
+      <div id="etaDisplayCard" class="eta-card hidden">
+        <div class="eta-card-header">
+          <div class="stop-identity">
+            <span class="stop-icon">📍</span>
+            <div>
+              <h3 id="activeStopName">Central Station Plaza</h3>
+              <span id="activeStopId" class="stop-id-tag">STOP #101</span>
+            </div>
+          </div>
+
+          <div class="auto-refresh-indicator" title="ETA auto-refreshes every 30 seconds">
+            <span class="refresh-text">Auto-refresh</span>
+            <div class="progress-ring-box">
+              <svg class="progress-ring" width="24" height="24">
+                <circle class="progress-ring-bg" stroke="rgba(255,255,255,0.1)" stroke-width="3" fill="transparent" r="9" cx="12" cy="12"/>
+                <circle id="refreshProgressRing" class="progress-ring-circle" stroke="#00f2fe" stroke-width="3" fill="transparent" r="9" cx="12" cy="12"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <div class="eta-primary-display">
+          <!-- Loading state for ETA -->
+          <div id="etaLoading" class="eta-loading hidden">
+            <div class="pulse-loader"></div>
+            <p>Calculating live ETA from sightings...</p>
+          </div>
+
+          <!-- Main ETA Content -->
+          <div id="etaContent" class="eta-content">
+            <div class="eta-big-number">
+              <span id="etaMinutesValue">--</span>
+              <span id="etaUnitLabel" class="eta-unit">MINS</span>
+            </div>
+
+            <div class="eta-status-pill-container">
+              <span id="etaStatusPill" class="status-pill status-on-time">ON TIME</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sighting & Bus Metadata -->
+        <div id="etaMetaBox" class="eta-meta-box">
+          <div class="meta-item">
+            <span class="meta-label">Last Bus Sighting</span>
+            <span id="lastSightingTime" class="meta-value">-- mins ago</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Sighting Location</span>
+            <span id="lastSightingLocation" class="meta-value">Waiting for reports</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Next Arrival Target</span>
+            <span id="etaTargetTime" class="meta-value">--:--</span>
+          </div>
+        </div>
+
+        <!-- REPORT SIGHTING ACTION BAR -->
+        <div class="sighting-action-bar">
+          <button id="reportSightingBtn" class="btn primary-action-btn pulse-button">
+            <span class="btn-icon">🚌</span>
+            <span id="sightingBtnText">I SEE THE BUS AT THIS STOP!</span>
+          </button>
+          
+          <p id="cooldownHint" class="cooldown-hint hidden">
+            ⏳ Anti-spam protection: You can report another sighting in <span id="cooldownTimer">03:00</span>.
+          </p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- MODAL 1: USER REGISTRATION / PROFILE MODAL -->
+  <div id="userModal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Rider Profile & Registration</h3>
+        <button id="closeUserModalBtn" class="close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">
+          Register your session to track your crowdsourced bus sightings. Your session token is stored in memory for this browser session.
+        </p>
+
+        <form id="registerForm" class="form-stack">
+          <div class="form-group">
+            <label for="usernameInput">Rider Display Name / Handle</label>
+            <input 
+              type="text" 
+              id="usernameInput" 
+              class="form-control" 
+              placeholder="e.g. BusRider_Alex" 
+              required 
+              maxlength="30"
+              autocomplete="off"
+            >
+          </div>
+
+          <div id="registerSuccessMsg" class="alert success-alert hidden">
+            ✅ Successfully registered as <strong id="registeredName"></strong>! Session active.
+          </div>
+
+          <div id="registerErrorMsg" class="alert error-alert hidden">
+            ❌ Registration failed. Please try again.
+          </div>
+
+          <div class="modal-actions">
+            <button type="submit" id="submitRegisterBtn" class="btn primary-btn full-btn">
+              Create Session & Register (POST /register)
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 2: CONFIRM SIGHTING MODAL -->
+  <div id="sightingConfirmModal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Confirm Bus Sighting Report</h3>
+        <button id="closeSightingModalBtn" class="close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="sighting-summary-box">
+          <div class="summary-icon">🚌</div>
+          <div class="summary-details">
+            <h4 id="confirmRouteName">Route R-101</h4>
+            <p>At stop: <strong id="confirmStopName">Central Station Plaza</strong></p>
+            <span class="timestamp-badge">Live Timestamp: Now</span>
+          </div>
+        </div>
+
+        <p class="modal-desc">
+          Your report will immediately update ETA predictions for all other riders waiting down the route!
+        </p>
+
+        <div id="sightingErrorMsg" class="alert error-alert hidden">
+          ❌ Failed to submit sighting. Rate limit or server error.
+        </div>
+
+        <div class="modal-actions">
+          <button id="confirmSightingSubmitBtn" class="btn success-btn full-btn">
+            Submit Live Bus Sighting (POST /sighting)
+          </button>
+          <button id="cancelSightingBtn" class="btn secondary-btn full-btn">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION SYSTEM -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- App Logic -->
+  <script src="app.js"></script>
+</body>
+</html>
