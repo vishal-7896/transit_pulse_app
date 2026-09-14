@@ -1,7 +1,7 @@
 import datetime
 from db import get_db
 
-def calculate_eta(route_stop_id):
+def calculate_eta(route_stop_id,direction='forward'):
     conn=get_db()
     this_stop=conn.execute("""
     SELECT route_id,stop_order FROM route_stop
@@ -13,12 +13,17 @@ def calculate_eta(route_stop_id):
     route_id=this_stop['route_id']
     user_stop_order=this_stop['stop_order']
 
+    if direction == 'return':
+        order_comparison = "route_stop.stop_order >= ?"
+    else:
+        order_comparison = "route_stop.stop_order <= ?"
+
     last=conn.execute("""
     SELECT route_stop.stop_order,sighting.seen_at FROM sighting
     JOIN route_stop ON sighting.route_stop_id=route_stop.id WHERE 
-    route_stop.route_id=? AND route_stop.stop_order <=? ORDER BY
+    route_stop.route_id=? AND sighting.direction=? AND """ + order_comparison + """ ORDER BY
     sighting.seen_at DESC LIMIT 1
-    """,(route_id,user_stop_order)).fetchone()
+    """,(route_id,direction,user_stop_order)).fetchone()
     if last is None:
         return {"status":"no data"}
     sighting_stop_order=last['stop_order']
@@ -30,6 +35,19 @@ def calculate_eta(route_stop_id):
 
     if age > datetime.timedelta(minutes=30):
         return {"status":"stale","seen at":seen_at_formatted}
+
+    if direction == 'return':
+        remaining =conn.execute("""
+        SELECT COALESCE(SUM(avg_travel_seconds),0) FROM 
+        route_stop WHERE route_id=? AND stop_order<? AND
+        stop_order>=?
+        """,(route_id,sighting_stop_order,user_stop_order)).fetchone()[0]
+    else:
+        remaining =conn.execute("""
+        SELECT COALESCE(SUM(avg_travel_seconds),0) FROM 
+        route_stop WHERE route_id=? AND stop_order>? AND
+        stop_order<=?
+        """,(route_id,sighting_stop_order,user_stop_order)).fetchone()[0]
 
     remaining =conn.execute("""
     SELECT COALESCE(SUM(avg_travel_seconds),0) FROM 

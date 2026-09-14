@@ -1,10 +1,11 @@
 from flask import Flask,request,jsonify
-from db import get_db
+from db import get_db, close_db
 from flask_cors import CORS
 from eta import calculate_eta
 app=Flask(__name__)
 CORS(app)
 
+app.teardown_appcontext(close_db)
 @app.route('/')
 def home():
     return "<p>This is the home page of Transit Pulse</p>"
@@ -51,7 +52,8 @@ def post_sighting():
 
 @app.route('/eta/<int:route_stop_id>',methods=['GET'])
 def get_eta(route_stop_id):
-    return(calculate_eta(route_stop_id))
+    direction = request.args.get('direction', 'forward')
+    return (calculate_eta(route_stop_id, direction))
 
 @app.route('/register',methods=['POST'])
 def register_user():
