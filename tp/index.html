@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#10152f">
+  <title>TransitPulse — Your Bus, Your Time</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="page page-landing">
+  <main class="landing-shell">
+    <section class="landing-hero" aria-labelledby="brand-title">
+      <div class="route-art" aria-hidden="true">
+        <span class="route-node route-node-1"></span>
+        <span class="route-node route-node-2"></span>
+        <span class="route-node route-node-3"></span>
+        <span class="route-line"></span>
+        <svg class="bus-illustration" viewBox="0 0 120 64" role="img" aria-label="Bus">
+          <rect x="10" y="14" width="92" height="36" rx="9"></rect>
+          <rect x="18" y="21" width="23" height="13" rx="3"></rect>
+          <rect x="45" y="21" width="23" height="13" rx="3"></rect>
+          <rect x="72" y="21" width="22" height="13" rx="3"></rect>
+          <circle cx="30" cy="51" r="6"></circle>
+          <circle cx="84" cy="51" r="6"></circle>
+          <path d="M10 40h92" class="bus-line"></path>
+          <path d="M102 27h8v12h-8" class="bus-front"></path>
+        </svg>
+      </div>
+
+      <p class="eyebrow">SMARTER BUS JOURNEYS</p>
+      <h1 id="brand-title" class="brand-title">Transit<span>Pulse</span></h1>
+      <p class="brand-copy">See the route. Check the ETA. Share the sighting.</p>
+
+      <div class="landing-actions" aria-label="Account actions">
+        <button class="action-button action-button-primary" id="login-btn" type="button">Login</button>
+        <a class="action-button action-button-secondary" href="register.html">Sign Up</a>
+      </div>
+
+      <div class="landing-message" id="landing-message" role="status" aria-live="polite"></div>
+
+      <p class="landing-quote">Make the journey easier, one stop at a time.</p>
+    </section>
+
+    <footer class="landing-footer">
+      TransitPulse &middot; Bus ETA &amp; community sightings
+    </footer>
+  </main>
+
+  <script src="storage.js"></script>
+  <script src="index.js"></script>
+</body>
+</html>
