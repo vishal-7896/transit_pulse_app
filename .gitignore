@@ -2,3 +2,26 @@ venv/
 transitpulse.db
 __pycache__/
 *.pyc
+.idea/
+# Database files — never commit these, they change with every sighting
+transitpulse.db
+*.db
+*.db-journal
+*.sqbpro
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+# Virtual environments
+venv/
+env/
+ENV/
+# IDE
+.vscode/
+.idea/
+*.swp
+# OS
+.DS_Store
+Thumbs.db
