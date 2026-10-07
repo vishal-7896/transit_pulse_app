@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#10152f">
+  <title>TransitPulse — Sign Up</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="page page-form">
+  <main class="mobile-shell">
+    <a class="back-link" href="index.html">← Back</a>
+
+    <section class="form-hero">
+      <div class="mini-icon mini-icon-bus" aria-hidden="true">🚌</div>
+      <p class="eyebrow">GET STARTED</p>
+      <h1>Create your TransitPulse profile</h1>
+      <p>We'll remember your user on this browser so you can report sightings.</p>
+    </section>
+
+    <section class="surface-card">
+      <form id="register-form" novalidate>
+        <div class="form-group">
+          <label for="name-input">Your name <span class="muted-label">(optional)</span></label>
+          <input
+            type="text"
+            id="name-input"
+            name="name"
+            autocomplete="name"
+            placeholder="e.g. Rohan"
+            maxlength="80"
+          >
+        </div>
+
+        <div class="form-group">
+          <label for="phone-input">Phone number</label>
+          <input
+            type="tel"
+            id="phone-input"
+            name="phone"
+            autocomplete="tel"
+            inputmode="numeric"
+            maxlength="10"
+            pattern="[0-9]{10}"
+            placeholder="10-digit mobile number"
+            required
+          >
+          <p class="field-hint">Enter exactly 10 digits.</p>
+        </div>
+
+        <button type="submit" class="wide-button wide-button-primary" id="register-btn">
+          <span class="button-label">Continue</span>
+          <span class="button-spinner" aria-hidden="true"></span>
+        </button>
+
+        <div class="message-box is-hidden" id="register-message" role="status" aria-live="polite"></div>
+      </form>
+    </section>
+
+    <section class="returning-card" id="returning-card">
+      <div>
+        <p class="returning-title">Already registered on this browser?</p>
+        <p class="returning-copy">You can continue without registering again.</p>
+      </div>
+      <a class="text-button" href="routes.html">Continue →</a>
+    </section>
+  </main>
+
+  <script src="storage.js"></script>
+  <script src="ui.js"></script>
+  <script src="api.js"></script>
+  <script src="register.js"></script>
+</body>
+</html>

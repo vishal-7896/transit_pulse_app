@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#10152f">
+  <title>TransitPulse — Routes</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="page page-routes">
+  <main class="mobile-shell">
+    <header class="top-bar">
+      <div class="brand-mini">Transit<span>Pulse</span></div>
+      <button class="ghost-button" id="change-user-btn" type="button">Change user</button>
+    </header>
+
+    <section class="welcome-block">
+      <p class="eyebrow">YOUR TRANSIT</p>
+      <h1 id="greeting">Hi there 👋</h1>
+      <p>Choose a route to see its stops and ETA.</p>
+    </section>
+
+    <section class="route-heading-row">
+      <div>
+        <h2>Choose your route</h2>
+        <p id="route-count" class="section-subtitle">Loading routes...</p>
+      </div>
+    </section>
+
+    <section id="routes-list" class="routes-list" aria-live="polite" aria-busy="true"></section>
+
+    <div id="routes-loading" class="state-card">
+      <div class="loading-dot" aria-hidden="true"></div>
+      <div>
+        <strong>Loading routes</strong>
+        <p>Getting the latest route list from TransitPulse.</p>
+      </div>
+    </div>
+
+    <div id="routes-empty" class="state-card is-hidden">
+      <div class="state-icon" aria-hidden="true">◌</div>
+      <div>
+        <strong>No routes available</strong>
+        <p>There are no routes in the backend right now.</p>
+      </div>
+    </div>
+
+    <div id="routes-error" class="message-box message-error is-hidden" role="alert"></div>
+    <button id="retry-routes-btn" class="wide-button wide-button-secondary is-hidden" type="button">Try again</button>
+  </main>
+
+  <script src="storage.js"></script>
+  <script src="ui.js"></script>
+  <script src="api.js"></script>
+  <script src="routes.js"></script>
+</body>
+</html>

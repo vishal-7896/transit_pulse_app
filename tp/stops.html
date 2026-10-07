@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#10152f">
+  <title>TransitPulse — Stops</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="page page-stops">
+  <main class="mobile-shell">
+    <a class="back-link" href="routes.html">← Back to routes</a>
+
+    <header class="route-header">
+      <div>
+        <p class="eyebrow">ROUTE</p>
+        <h1 id="route-title">Loading route...</h1>
+        <p>Pick a direction and your current stop.</p>
+      </div>
+      <div class="route-badge" aria-hidden="true">🚌</div>
+    </header>
+
+    <section class="surface-card direction-card">
+      <div class="section-label">Which direction is the bus going?</div>
+      <div class="direction-row" role="group" aria-label="Bus direction">
+        <button type="button" class="direction-button is-active" id="forward-btn" aria-pressed="true">Forward</button>
+        <button type="button" class="direction-button" id="return-btn" aria-pressed="false">Return</button>
+      </div>
+    </section>
+
+    <section class="stops-section">
+      <div class="route-section-head">
+        <div>
+          <h2>Choose your stop</h2>
+          <p id="stops-subtitle" class="section-subtitle">Loading stops...</p>
+        </div>
+      </div>
+
+      <div id="stops-list" class="stops-list" aria-live="polite" aria-busy="true"></div>
+
+      <div id="stops-loading" class="state-card">
+        <div class="loading-dot" aria-hidden="true"></div>
+        <div>
+          <strong>Loading stops</strong>
+          <p>Getting the route stops from TransitPulse.</p>
+        </div>
+      </div>
+
+      <div id="stops-empty" class="state-card is-hidden">
+        <div class="state-icon" aria-hidden="true">◌</div>
+        <div>
+          <strong>No stops available</strong>
+          <p>This route currently has no stops in the backend.</p>
+        </div>
+      </div>
+
+      <div id="stops-error" class="message-box message-error is-hidden" role="alert"></div>
+      <button id="retry-stops-btn" class="wide-button wide-button-secondary is-hidden" type="button">Try again</button>
+    </section>
+  </main>
+
+  <script src="storage.js"></script>
+  <script src="ui.js"></script>
+  <script src="api.js"></script>
+  <script src="stops.js"></script>
+</body>
+</html>
