@@ -1,6 +1,6 @@
 flask
 flask-cors
-flask-admin
+git+https://github.com/pallets-eco/flask-admin.git
 sqlalchemy
 psycopg2-binary
 python-dotenv
