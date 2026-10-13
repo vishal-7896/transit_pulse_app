@@ -1,6 +1,6 @@
 flask
 flask-cors
-flask-admin
+flask-admin==1.6.1
 sqlalchemy
 psycopg2-binary
 python-dotenv
