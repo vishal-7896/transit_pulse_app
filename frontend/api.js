@@ -3,9 +3,9 @@
   "use strict";
 
   var configuredBase = window.TRANSITPULSE_API_BASE_URL;
-  var host = window.location.hostname || "127.0.0.1";
-  var defaultBase = "http://" + host + ":5000";
-  var API_BASE_URL = (configuredBase || defaultBase).replace(/\/$/, "");
+var isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+var defaultBase = isLocal ? "http://" + window.location.hostname + ":5000" : window.location.origin;
+var API_BASE_URL = (configuredBase || defaultBase).replace(/\/$/, "");
 
   window.TransitPulseAPI = {
     getRoutes: function () {
