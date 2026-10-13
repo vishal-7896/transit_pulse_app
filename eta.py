@@ -1,73 +1,89 @@
 import datetime
-from db import get_db
+from sqlalchemy import select, func
+from db import get_session
+from alchemy_models import RouteStop, Sighting, Route
 
-def calculate_eta(route_stop_id,direction='forward'):
-    conn=get_db()
-    this_stop=conn.execute("""
-    SELECT route_id,stop_order FROM route_stop
-    WHERE id=?
-    """,(route_stop_id,)).fetchone()
 
-    if this_stop is None:
-        return {"status":"error","message":"stop not found"},404
-    route_id=this_stop['route_id']
-    user_stop_order=this_stop['stop_order']
+def calculate_eta(route_stop_id, direction='forward'):
+    with get_session() as session:
+        this_stop = session.get(RouteStop, route_stop_id)
 
-    if direction == 'return':
-        order_comparison = "route_stop.stop_order >= ?"
-    else:
-        order_comparison = "route_stop.stop_order <= ?"
+        if this_stop is None:
+            return {"status": "error", "message": "stop not found"}, 404
 
-    last=conn.execute("""
-    SELECT route_stop.stop_order,sighting.seen_at FROM sighting
-    JOIN route_stop ON sighting.route_stop_id=route_stop.id WHERE 
-    route_stop.route_id=? AND sighting.direction=? AND """ + order_comparison + """ ORDER BY
-    sighting.seen_at DESC LIMIT 1
-    """,(route_id,direction,user_stop_order)).fetchone()
-    if last is None:
-        return {"status":"no data"}
-    sighting_stop_order=last['stop_order']
-    seen_at=last['seen_at']
+        route_id = this_stop.route_id
+        user_stop_order = this_stop.stop_order
 
-    seen_at_formatted=datetime.datetime.fromisoformat(seen_at)
-    curr_time=datetime.datetime.utcnow()
-    age=curr_time-seen_at_formatted
+        if direction == 'return':
+            order_filter = RouteStop.stop_order >= user_stop_order
+        else:
+            order_filter = RouteStop.stop_order <= user_stop_order
 
-    if age > datetime.timedelta(minutes=30):
-        return {"status":"stale","seen at":seen_at_formatted}
+        stmt = (
+            select(RouteStop.stop_order, Sighting.seen_at)
+            .join(RouteStop, Sighting.route_stop_id == RouteStop.id)
+            .where(
+                RouteStop.route_id == route_id,
+                Sighting.direction == direction,
+                order_filter
+            )
+            .order_by(Sighting.seen_at.desc())
+            .limit(1)
+        )
+        last = session.execute(stmt).first()
 
-    if direction == 'return':
-        remaining =conn.execute("""
-        SELECT COALESCE(SUM(avg_travel_seconds),0) FROM 
-        route_stop WHERE route_id=? AND stop_order<? AND
-        stop_order>=?
-        """,(route_id,sighting_stop_order,user_stop_order)).fetchone()[0]
-    else:
-        remaining =conn.execute("""
-        SELECT COALESCE(SUM(avg_travel_seconds),0) FROM 
-        route_stop WHERE route_id=? AND stop_order>? AND
-        stop_order<=?
-        """,(route_id,sighting_stop_order,user_stop_order)).fetchone()[0]
+        if last is None:
+            return {"status": "no data"}
 
-    remaining =conn.execute("""
-    SELECT COALESCE(SUM(avg_travel_seconds),0) FROM 
-    route_stop WHERE route_id=? AND stop_order>? AND
-    stop_order<=?
-    """,(route_id,sighting_stop_order,user_stop_order)).fetchone()[0]
-    elapsed=age.total_seconds()
-    eta_seconds = remaining - elapsed
-    eta=max(0,eta_seconds)
+        sighting_stop_order = last.stop_order
+        seen_at = last.seen_at
 
-    if eta ==0 and remaining < elapsed:
-        row=conn.execute("""
-        SELECT frequency_minutes FROM route WHERE id=?
-        """,(route_id,)).fetchone()
-        freq_min=row['frequency_minutes']
-        return {"status":"passed",
-                "message":"Bus may just have passed",
-                "next bus approx mins":freq_min  }
+        if isinstance(seen_at, str):
+            seen_at_formatted = datetime.datetime.fromisoformat(seen_at)
+        else:
+            seen_at_formatted = seen_at
 
-    else:
-        return {"status":"live",
-                "eta seconds":eta_seconds,
-                "eta minutes":round((eta_seconds/60))}
+        curr_time = datetime.datetime.utcnow()
+        age = curr_time - seen_at_formatted
+
+        if age > datetime.timedelta(minutes=30):
+            return {"status": "stale", "seen at": str(seen_at_formatted)}
+
+        if direction == 'return':
+            order_range = (
+                RouteStop.stop_order < sighting_stop_order,
+                RouteStop.stop_order >= user_stop_order,
+            )
+        else:
+            order_range = (
+                RouteStop.stop_order > sighting_stop_order,
+                RouteStop.stop_order <= user_stop_order,
+            )
+
+        sum_stmt = (
+            select(func.coalesce(func.sum(RouteStop.avg_travel_seconds), 0))
+            .where(
+                RouteStop.route_id == route_id,
+                *order_range
+            )
+        )
+        remaining = session.scalar(sum_stmt)
+
+        elapsed = age.total_seconds()
+        eta_seconds = remaining - elapsed
+        eta = max(0, eta_seconds)
+
+        if eta == 0 and remaining < elapsed:
+            route = session.get(Route, route_id)
+            freq_min = route.frequency_minutes
+            return {
+                "status": "passed",
+                "message": "Bus may just have passed",
+                "next bus approx mins": freq_min
+            }
+        else:
+            return {
+                "status": "live",
+                "eta seconds": eta_seconds,
+                "eta minutes": round(eta_seconds / 60)
+            }

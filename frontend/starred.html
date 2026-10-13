@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#10152f">
+  <title>TransitPulse — Starred</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="style.css">
+  <!-- PWA Manifest & Meta Tags -->
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#10152f">
+
+<!-- Register Service Worker -->
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js')
+        .then((reg) => console.log('Service Worker registered:', reg.scope))
+        .catch((err) => console.log('Service Worker registration failed:', err));
+    });
+  }
+</script>
+</head>
+<body class="page page-starred">
+  <main class="mobile-shell">
+    <header class="top-bar">
+      <div class="brand-mini">Transit<span>Pulse</span></div>
+    </header>
+
+    <section class="welcome-block">
+      <p class="eyebrow">YOUR SHORTCUTS</p>
+      <h1>Starred stops</h1>
+      <p>The stops you check every day, one tap away.</p>
+    </section>
+
+    <section id="starred-list" class="starred-list" aria-live="polite"></section>
+
+    <div id="starred-empty" class="state-card is-hidden">
+      <div class="state-icon" aria-hidden="true">☆</div>
+      <div>
+        <strong>No starred stops yet</strong>
+        <p>Open a route, then tap the star on a stop to save it here.</p>
+      </div>
+    </div>
+    <a class="wide-button wide-button-secondary link-button" href="routes.html">Browse routes</a>
+  </main>
+
+  <script src="storage.js"></script>
+  <script src="favorites.js"></script>
+  <script src="starred-ui.js"></script>
+  <script src="nav.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      if (!TransitPulseStorage.getUserId()) { window.location.href = "register.html"; return; }
+      var list = document.getElementById("starred-list");
+      var empty = document.getElementById("starred-empty");
+      function refresh() {
+        var n = TransitPulseStarredUI.render(list);
+        empty.classList.toggle("is-hidden", n > 0);
+      }
+      // Re-render after unstarring from this page.
+      list.addEventListener("click", function () { window.setTimeout(refresh, 0); });
+      refresh();
+    });
+  </script>
+</body>
+</html>

@@ -1,2 +1,7 @@
 flask
 flask-cors
+flask-admin
+sqlalchemy
+psycopg2-binary
+python-dotenv
+firebase-admin
