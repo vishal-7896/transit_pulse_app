@@ -1,5 +1,13 @@
 from flask import redirect, url_for, request, flash, session as flask_session
 from flask_admin import Admin, AdminIndexView, expose
+# Fix for Flask-Admin 2.2.1 import bug
+try:
+    import flask_admin.contrib.sqla._types as _fa_types
+    if not hasattr(_fa_types, 'T_SESSION'):
+        _fa_types.T_SESSION = object
+except Exception:
+    pass
+
 from flask_admin.contrib.sqla import ModelView
 from sqlalchemy.orm import Session
 from sqlalchemy.orm import scoped_session, sessionmaker
