@@ -1,27 +1,32 @@
-venv/
-transitpulse.db
+# Byte-compiled / optimized / DLL files
 __pycache__/
-*.pyc
-.idea/
-# Database files — never commit these, they change with every sighting
-transitpulse.db
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Environment variables & secrets (NEVER COMMIT)
+.env
+serviceAccountKey.json
+
+# Local SQLite databases & migrations
 *.db
-*.db-journal
-*.sqbpro
-# Python artifacts
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
+*.sqlite3
+transitpulse.db
+
 # Virtual environments
 venv/
 env/
 ENV/
-# IDE
-.vscode/
+.venv/
+
+# IDE configurations
 .idea/
+.vscode/
 *.swp
-# OS
+*.swo
+
+# OS generated files
 .DS_Store
 Thumbs.db
