@@ -51,9 +51,9 @@ def calculate_eta(route_stop_id, direction='forward'):
 
         if direction == 'return':
             order_range = (
-                RouteStop.stop_order < sighting_stop_order,
-                RouteStop.stop_order >= user_stop_order,
-            )
+                RouteStop.stop_order <= sighting_stop_order,
+                RouteStop.stop_order > user_stop_order,
+                )
         else:
             order_range = (
                 RouteStop.stop_order > sighting_stop_order,
