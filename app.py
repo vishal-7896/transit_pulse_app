@@ -1,5 +1,5 @@
 import os
-from flask import Flask, request, jsonify, g,abort,send_from_directory
+from flask import Flask, request, jsonify, g, abort, send_from_directory
 from flask_cors import CORS
 from sqlalchemy import select, func
 from datetime import datetime, timedelta
@@ -8,6 +8,7 @@ from db import get_session
 from alchemy_models import Route, RouteStop, Sighting, User, Operator
 from eta import calculate_eta
 from auth_middleware import require_auth
+from admin_views import init_admin
 
 
 app = Flask(__name__)
@@ -18,12 +19,12 @@ if not app.secret_key:
     raise RuntimeError("SECRET_KEY is not set. Add it to your .env file")
 CORS(app)
 
-from admin_views import init_admin
 init_admin(app)
 
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend")
 ALLOWED_EXTENSIONS = {'.html', '.js', '.css', '.png', '.jpg', '.jpeg',
                       '.svg', '.ico', '.webmanifest', '.woff2'}
+
 
 @app.route('/')
 def home():
@@ -107,6 +108,53 @@ def get_operators():
         } for op in operators])
 
 
+def update_adaptive_travel_time(session, current_rs, sighting, alpha=0.2):
+    try:
+        if sighting.direction == 'return':
+            prev_order = current_rs.stop_order + 1
+        else:
+            prev_order = current_rs.stop_order - 1
+
+        if prev_order < 1:
+            return
+
+        stmt = (
+            select(Sighting)
+            .join(RouteStop)
+            .where(
+                RouteStop.route_id == current_rs.route_id,
+                RouteStop.stop_order == prev_order,
+                Sighting.direction == sighting.direction,
+                Sighting.seen_at > datetime.utcnow() - timedelta(minutes=45)
+            )
+        )
+        if sighting.operator_id:
+            stmt = stmt.where(Sighting.operator_id == sighting.operator_id)
+
+        prev_sighting = session.scalars(stmt.order_by(Sighting.seen_at.desc())).first()
+
+        if not prev_sighting:
+            return
+
+        delta_seconds = (datetime.utcnow() - prev_sighting.seen_at).total_seconds()
+
+        if 60 <= delta_seconds <= 2700:
+            segment_order = max(current_rs.stop_order, prev_order)
+            target_rs = current_rs if current_rs.stop_order == segment_order else session.scalars(
+                select(RouteStop).where(
+                    RouteStop.route_id == current_rs.route_id,
+                    RouteStop.stop_order == segment_order
+                )
+            ).first()
+
+            if target_rs:
+                old_avg = target_rs.avg_travel_seconds or delta_seconds
+                new_avg = round((1 - alpha) * old_avg + alpha * delta_seconds)
+                target_rs.avg_travel_seconds = int(new_avg)
+    except Exception as e:
+        print(f"Adaptive travel update notice: {e}")
+
+
 @app.route('/sighting', methods=['POST'])
 @require_auth
 def post_sighting():
@@ -122,8 +170,10 @@ def post_sighting():
 
     with get_session() as session:
         current_rs = session.get(RouteStop, route_stop_id)
+        if not current_rs:
+            return jsonify({"error": "stop not found"}), 404
 
-        three_min_ago = datetime.now() - timedelta(minutes=3)
+        three_min_ago = datetime.utcnow() - timedelta(minutes=3)
         stmt = (
             select(Sighting)
             .join(RouteStop)
@@ -146,6 +196,9 @@ def post_sighting():
             operator_id=operator_id
         )
         session.add(sighting)
+
+        update_adaptive_travel_time(session, current_rs, sighting)
+
         session.commit()
         return jsonify({"status": "ok"})
 
@@ -164,23 +217,30 @@ def register_user():
 
     with get_session() as session:
         user = session.get(User, g.current_user['id'])
+        if not user:
+            return jsonify({"error": "user not found"}), 404
+
         if user_name:
             user.name = user_name
             session.commit()
 
-    return jsonify({
-        "status": "ok",
-        "user_id": g.current_user['id'],
-        "name": g.current_user.get('name', user_name)
-    })
+        return jsonify({
+            "status": "ok",
+            "user": {
+                "id": user.id,
+                "phone": user.phone,
+                "name": user.name
+            }
+        })
+
 
 @app.route('/<path:filename>')
-def serve_frontend_files(filename):
+def serve_static(filename):
     ext = os.path.splitext(filename)[1].lower()
-    # allowlist only, and block anything starting with a dot (.env, .git, etc.)
-    if ext not in ALLOWED_EXTENSIONS or any(part.startswith('.') for part in filename.split('/')):
+    if ext not in ALLOWED_EXTENSIONS:
         abort(404)
     return send_from_directory(FRONTEND_DIR, filename)
+
 
 if __name__ == '__main__':
     app.run(debug=True)
