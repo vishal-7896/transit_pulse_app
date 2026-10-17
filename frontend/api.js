@@ -102,10 +102,10 @@ var API_BASE_URL = (configuredBase || defaultBase).replace(/\/$/, "");
     }
   }
 
-  function getServerErrorMessage(data, status) {
-    if (data && typeof data.message === "string") return data.message;
+    function getServerErrorMessage(data, status) {
+    if (data && typeof data.message === "string" && !data.message.startsWith("<")) return data.message;
     if (data && typeof data.error === "string") return data.error;
-    if (status >= 500) return "The TransitPulse server is temporarily unavailable.";
+    if (status >= 500) return "Server is waking up. Please tap Try again in a moment.";
     return "The TransitPulse request could not be completed.";
   }
 })();
