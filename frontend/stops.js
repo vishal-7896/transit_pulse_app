@@ -33,19 +33,90 @@
     var selectedStop = null;
     var stops = [];
     var sightingCooldownActive = false;
-    var operators=[];
-    var selectedOperatorId=null;
-    var selectedCrowdLevel=null;
+    var operators = [];
+    var selectedOperatorId = null;
+    var selectedCrowdLevel = null;
     var currentEtaStop = null;
     var preselectStopId = params.get("stop");
     if (preselectStopId && !/^\d+$/.test(preselectStopId)) preselectStopId = null;
 
-    // ---- Live ETA countdown ----
     var tickTimer = null;
     var refetchTimer = null;
     var countdownStopId = null;
     var countdownEndAt = null;
-    var REFETCH_MS = 45000; // re-sync with the server to correct drift
+    var REFETCH_MS = 45000;
+
+    var COOLDOWN_KEY = "tp_sighting_cooldown_until";
+    var cooldownTimer = null;
+
+    function getCooldownSecondsLeft() {
+      var until = parseInt(localStorage.getItem(COOLDOWN_KEY), 10);
+      if (!until || isNaN(until)) return 0;
+      var diff = Math.ceil((until - Date.now()) / 1000);
+      return diff > 0 ? diff : 0;
+    }
+
+    function checkCooldown() {
+      var left = getCooldownSecondsLeft();
+      if (left > 0) {
+        startCooldown(left);
+      } else {
+        localStorage.removeItem(COOLDOWN_KEY);
+        sightingCooldownActive = false;
+        var reportButtons = document.querySelectorAll(".report-button");
+        reportButtons.forEach(function (btn) {
+          btn.disabled = false;
+          btn.textContent = "I see the bus";
+          btn.classList.remove("is-warning", "is-success");
+        });
+      }
+    }
+
+    function startCooldown(customSeconds) {
+      if (customSeconds === undefined) {
+        var until = Date.now() + (180 * 1000);
+        localStorage.setItem(COOLDOWN_KEY, String(until));
+      }
+      sightingCooldownActive = true;
+
+      window.clearInterval(cooldownTimer);
+
+      function updateLabels() {
+        var left = getCooldownSecondsLeft();
+        var reportButtons = document.querySelectorAll(".report-button");
+
+        if (left <= 0) {
+          window.clearInterval(cooldownTimer);
+          cooldownTimer = null;
+          sightingCooldownActive = false;
+          localStorage.removeItem(COOLDOWN_KEY);
+
+          reportButtons.forEach(function (btn) {
+            btn.disabled = false;
+            btn.textContent = "I see the bus";
+            btn.classList.remove("is-warning", "is-success");
+          });
+          return;
+        }
+
+        sightingCooldownActive = true;
+        reportButtons.forEach(function (btn) {
+          btn.disabled = true;
+          btn.textContent = "Reported • wait " + left + "s";
+          btn.classList.add("is-warning");
+        });
+      }
+
+      updateLabels();
+      cooldownTimer = window.setInterval(updateLabels, 1000);
+    }
+
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) {
+        checkCooldown();
+      }
+    });
+    window.addEventListener("pageshow", checkCooldown);
 
     function stopCountdown() {
       window.clearInterval(tickTimer);
@@ -59,8 +130,6 @@
       });
     }
 
-    // The server may send precise seconds ("eta seconds"); if it only sends whole
-    // minutes, we treat that value as +/- 1 minute and avoid snapping the clock back.
     function parseEta(eta) {
       var secs = Number(eta["eta seconds"] !== undefined ? eta["eta seconds"] : eta.eta_seconds);
       if (isFinite(secs) && secs >= 0) return { sec: secs, precise: true };
@@ -76,8 +145,6 @@
       var sameStop = countdownStopId === String(stop.route_stop_id) && countdownEndAt !== null;
       var left = sameStop ? (countdownEndAt - Date.now()) / 1000 : -1;
 
-      // Whole-minute data from the server and we are already counting down within a
-      // minute of it: keep our own (smoother) clock instead of resetting to 14:00.
       if (sameStop && !parsed.precise && left > 0 && Math.abs(left - parsed.sec) <= 60) {
         etaMeta.className = "eta-meta";
         etaMeta.textContent = "Live ETA \u00b7 counting down, re-syncs automatically.";
@@ -110,22 +177,21 @@
       etaMeta.textContent = "Live ETA \u00b7 counting down, re-syncs automatically.";
 
       refetchTimer = window.setInterval(async function () {
-        if (document.hidden) return; // don't poll from a background tab
+        if (document.hidden) return;
         try {
           var fresh = await TransitPulseAPI.getEta(stop.route_stop_id, selectedDirection);
-          if (countdownStopId !== String(stop.route_stop_id)) return; // user moved on
+          if (countdownStopId !== String(stop.route_stop_id)) return;
           if (fresh && fresh.status === "live") {
             startCountdown(stop, fresh, etaValue, etaMeta);
           } else {
             stopCountdown();
             renderEtaState(fresh, etaValue, etaMeta);
           }
-        } catch (e) {
-          /* transient failure: keep ticking on the last known value */
-        }
+        } catch (e) {}
       }, REFETCH_MS);
       return true;
     }
+
     forwardButton.addEventListener("click", function () {
       setDirection("forward");
     });
@@ -138,13 +204,15 @@
 
     loadStops();
     loadOperators();
+
     async function loadOperators() {
-      try{
-        operators=await TransitPulseAPI.getOperators();
-      } catch(e){
-        console.warn("Could not load operators",e);
+      try {
+        operators = await TransitPulseAPI.getOperators();
+      } catch (e) {
+        console.warn("Could not load operators", e);
       }
     }
+
     async function loadStops() {
       setLoadingState(true);
       TransitPulseUI.clearMessage(errorBox);
@@ -183,9 +251,11 @@
         stopsList.appendChild(createStopCard(stop));
       });
 
+      checkCooldown();
+
       if (preselectStopId) {
         var target = stopsList.querySelector('[data-route-stop-id="' + preselectStopId + '"]');
-        preselectStopId = null; // only once, not on every retry
+        preselectStopId = null;
         if (target) {
           target.querySelector(".stop-select-button").click();
           target.scrollIntoView({ block: "center" });
@@ -356,7 +426,7 @@
 
       setButtonLoading(button, "Checking ETA...");
       if (countdownStopId !== String(stop.route_stop_id)) {
-        etaValue.textContent = "…"; // keep the running clock visible while re-checking
+        etaValue.textContent = "…";
         etaMeta.textContent = "Getting the latest result from TransitPulse.";
       }
 
@@ -419,147 +489,139 @@
     }
 
     async function reportSighting(stop, button, etaValue, etaMeta) {
-    if (sightingCooldownActive) {
+      if (sightingCooldownActive) {
         etaMeta.className = "eta-meta eta-meta-warning";
         etaMeta.textContent = "A sighting was recently reported. Please wait before reporting again.";
         return;
-    }
+      }
 
-    if (!selectedStop || String(selectedStop.route_stop_id) !== String(stop.route_stop_id)) {
+      if (!selectedStop || String(selectedStop.route_stop_id) !== String(stop.route_stop_id)) {
         showInlineInstruction("Please select this stop first.");
         return;
+      }
+
+      showSightingPicker(stop, button, etaValue, etaMeta);
     }
 
-    // Show operator + crowd picker inline before submitting
-    showSightingPicker(stop, button, etaValue, etaMeta);
-}
+    function showSightingPicker(stop, button, etaValue, etaMeta) {
+      var existingPicker = document.getElementById("sighting-picker");
+      if (existingPicker) existingPicker.remove();
 
-function showSightingPicker(stop, button, etaValue, etaMeta) {
-    // Remove existing picker if any
-    var existingPicker = document.getElementById("sighting-picker");
-    if (existingPicker) existingPicker.remove();
+      var picker = document.createElement("div");
+      picker.id = "sighting-picker";
+      picker.style.cssText = "margin-top:12px;display:flex;flex-direction:column;gap:10px;";
 
-    var picker = document.createElement("div");
-    picker.id = "sighting-picker";
-    picker.style.cssText = "margin-top:12px;display:flex;flex-direction:column;gap:10px;";
+      var opLabel = document.createElement("div");
+      opLabel.className = "section-label";
+      opLabel.textContent = "Which operator?";
 
-    // --- Operator row ---
-    var opLabel = document.createElement("div");
-    opLabel.className = "section-label";
-    opLabel.textContent = "Which operator?";
+      var opRow = document.createElement("div");
+      opRow.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;";
 
-    var opRow = document.createElement("div");
-    opRow.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;";
-
-    operators.forEach(function (op) {
+      operators.forEach(function (op) {
         var btn = document.createElement("button");
         btn.type = "button";
         btn.className = "direction-button";
         btn.textContent = op.short_code || op.name;
         btn.dataset.operatorId = op.id;
         btn.addEventListener("click", function () {
-            opRow.querySelectorAll("button").forEach(function (b) {
-                b.classList.remove("is-active");
-            });
-            btn.classList.add("is-active");
-            selectedOperatorId = op.id;
+          opRow.querySelectorAll("button").forEach(function (b) {
+            b.classList.remove("is-active");
+          });
+          btn.classList.add("is-active");
+          selectedOperatorId = op.id;
         });
         opRow.appendChild(btn);
-    });
+      });
 
-    // Private option
-    var privateBtn = document.createElement("button");
-    privateBtn.type = "button";
-    privateBtn.className = "direction-button";
-    privateBtn.textContent = "Private";
-    privateBtn.addEventListener("click", function () {
+      var privateBtn = document.createElement("button");
+      privateBtn.type = "button";
+      privateBtn.className = "direction-button";
+      privateBtn.textContent = "Private";
+      privateBtn.addEventListener("click", function () {
         opRow.querySelectorAll("button").forEach(function (b) {
-            b.classList.remove("is-active");
+          b.classList.remove("is-active");
         });
         privateBtn.classList.add("is-active");
-        selectedOperatorId = null;  // no operator_id for private
-    });
-    opRow.appendChild(privateBtn);
+        selectedOperatorId = null;
+      });
+      opRow.appendChild(privateBtn);
 
-    // --- Crowd level row ---
-    var crowdLabel = document.createElement("div");
-    crowdLabel.className = "section-label";
-    crowdLabel.textContent = "How crowded?";
+      var crowdLabel = document.createElement("div");
+      crowdLabel.className = "section-label";
+      crowdLabel.textContent = "How crowded?";
 
-    var crowdRow = document.createElement("div");
-    crowdRow.style.cssText = "display:flex;gap:8px;";
+      var crowdRow = document.createElement("div");
+      crowdRow.style.cssText = "display:flex;gap:8px;";
 
-    ["empty", "moderate", "packed"].forEach(function (level) {
+      ["empty", "moderate", "packed"].forEach(function (level) {
         var btn = document.createElement("button");
         btn.type = "button";
         btn.className = "direction-button";
         btn.textContent = level.charAt(0).toUpperCase() + level.slice(1);
         btn.addEventListener("click", function () {
-            crowdRow.querySelectorAll("button").forEach(function (b) {
-                b.classList.remove("is-active");
-            });
-            btn.classList.add("is-active");
-            selectedCrowdLevel = level;
+          crowdRow.querySelectorAll("button").forEach(function (b) {
+            b.classList.remove("is-active");
+          });
+          btn.classList.add("is-active");
+          selectedCrowdLevel = level;
         });
         crowdRow.appendChild(btn);
-    });
+      });
 
-    // --- Submit button ---
-    var submitBtn = document.createElement("button");
-    submitBtn.type = "button";
-    submitBtn.className = "wide-button wide-button-secondary report-button";
-    submitBtn.textContent = "Confirm & Submit";
-    submitBtn.addEventListener("click", async function () {
+      var submitBtn = document.createElement("button");
+      submitBtn.type = "button";
+      submitBtn.className = "wide-button wide-button-secondary report-button";
+      submitBtn.textContent = "Confirm & Submit";
+      submitBtn.addEventListener("click", async function () {
         setButtonLoading(submitBtn, "Sending...");
 
         try {
-            await TransitPulseAPI.reportSighting({
-                route_stop_id: stop.route_stop_id,
-                direction: selectedDirection,
-                operator_id: selectedOperatorId,
-                crowd_level: selectedCrowdLevel
-            });
+          await TransitPulseAPI.reportSighting({
+            route_stop_id: stop.route_stop_id,
+            direction: selectedDirection,
+            operator_id: selectedOperatorId,
+            crowd_level: selectedCrowdLevel
+          });
 
-            picker.remove();
-            stopCountdown();
-            startCooldown();
-            showThankYou();
-            button.disabled = true;
-            button.textContent = "Reported • wait 3 min";
-            button.classList.add("is-success");
-            etaValue.textContent = "—";
-            etaMeta.className = "eta-meta eta-meta-success";
-            etaMeta.textContent = "Sighting shared. Tap Check ETA to get the latest.";
+          picker.remove();
+          stopCountdown();
+          startCooldown();
+          showThankYou();
+          button.disabled = true;
+          button.textContent = "Reported • wait 3 min";
+          button.classList.add("is-success");
+          etaValue.textContent = "—";
+          etaMeta.className = "eta-meta eta-meta-success";
+          etaMeta.textContent = "Sighting shared. Tap Check ETA to get the latest.";
         } catch (error) {
-            console.error("Sighting error:", error);
+          console.error("Sighting error:", error);
 
-            if (error && error.status === 429) {
-                button.classList.add("is-warning");
-                button.disabled = true;
-                etaMeta.className = "eta-meta eta-meta-warning";
-                etaMeta.textContent = "You've recently reported a sighting. Please wait.";
-                startCooldown();
-                picker.remove();
-                return;
-            }
+          if (error && error.status === 429) {
+            button.classList.add("is-warning");
+            button.disabled = true;
+            etaMeta.className = "eta-meta eta-meta-warning";
+            etaMeta.textContent = "You've recently reported a sighting. Please wait.";
+            startCooldown();
+            picker.remove();
+            return;
+          }
 
-            resetButton(submitBtn, "Confirm & Submit");
-            etaMeta.className = "eta-meta eta-meta-error";
-            etaMeta.textContent = getSightingError(error);
+          resetButton(submitBtn, "Confirm & Submit");
+          etaMeta.className = "eta-meta eta-meta-error";
+          etaMeta.textContent = getSightingError(error);
         }
-    });
+      });
 
-    picker.appendChild(opLabel);
-    picker.appendChild(opRow);
-    picker.appendChild(crowdLabel);
-    picker.appendChild(crowdRow);
-    picker.appendChild(submitBtn);
+      picker.appendChild(opLabel);
+      picker.appendChild(opRow);
+      picker.appendChild(crowdLabel);
+      picker.appendChild(crowdRow);
+      picker.appendChild(submitBtn);
 
-    // Insert picker after the "I see the bus" button
-    button.parentNode.insertBefore(picker, button.nextSibling);
-}
+      button.parentNode.insertBefore(picker, button.nextSibling);
+    }
 
-    // ---- Thank-you popup shown after a sighting is posted ----
     var thanksTimer = null;
     function showThankYou() {
       var old = document.getElementById("thanks-toast");
@@ -590,43 +652,6 @@ function showSightingPicker(stop, button, etaValue, etaMeta) {
       el.querySelector(".thanks-card").addEventListener("click", hide);
       window.requestAnimationFrame(function () { el.classList.add("is-visible"); });
       thanksTimer = window.setTimeout(hide, 3600);
-    }
-
-    function startCooldown() {
-      sightingCooldownActive = true;
-
-      var reportButtons = document.querySelectorAll(".report-button");
-      reportButtons.forEach(function (reportButton) {
-        reportButton.disabled = true;
-        reportButton.classList.add("is-warning");
-      });
-
-      var secondsLeft = 180;
-
-      function updateLabels() {
-        reportButtons = document.querySelectorAll(".report-button");
-
-        if (secondsLeft <= 0) {
-          window.clearInterval(timer);
-          sightingCooldownActive = false;
-          reportButtons.forEach(function (reportButton) {
-            reportButton.disabled = false;
-            reportButton.textContent = "I see the bus";
-            reportButton.classList.remove("is-warning");
-            reportButton.classList.remove("is-success");
-          });
-          return;
-        }
-
-        reportButtons.forEach(function (reportButton) {
-          reportButton.disabled = true;
-          reportButton.textContent = "Reported • wait " + secondsLeft + "s";
-        });
-        secondsLeft -= 1;
-      }
-
-      updateLabels();
-      var timer = window.setInterval(updateLabels, 1000);
     }
 
     function showInlineInstruction(message) {
