@@ -29,6 +29,16 @@
 
     routeTitle.textContent = routeName || "Route";
 
+    var forwardLabel = "Forward";
+    var returnLabel = "Return";
+    if (routeName && routeName.indexOf("-") !== -1) {
+      var parts = routeName.split("-");
+      forwardLabel = "To " + parts[1].trim() + " →";
+      returnLabel = "← To " + parts[0].trim();
+    }
+    forwardButton.textContent = forwardLabel;
+    returnButton.textContent = returnLabel;
+
     var selectedDirection = "forward";
     var selectedStop = null;
     var stops = [];
@@ -511,6 +521,36 @@
       picker.id = "sighting-picker";
       picker.style.cssText = "margin-top:12px;display:flex;flex-direction:column;gap:10px;";
 
+      var dirLabel = document.createElement("div");
+      dirLabel.className = "section-label";
+      dirLabel.textContent = "Which direction is the bus heading?";
+
+      var dirRow = document.createElement("div");
+      dirRow.style.cssText = "display:flex;gap:8px;";
+
+      var forwardDirBtn = document.createElement("button");
+      forwardDirBtn.type = "button";
+      forwardDirBtn.className = "direction-button" + (selectedDirection === "forward" ? " is-active" : "");
+      forwardDirBtn.textContent = forwardLabel;
+      forwardDirBtn.addEventListener("click", function () {
+        forwardDirBtn.classList.add("is-active");
+        returnDirBtn.classList.remove("is-active");
+        setDirection("forward");
+      });
+
+      var returnDirBtn = document.createElement("button");
+      returnDirBtn.type = "button";
+      returnDirBtn.className = "direction-button" + (selectedDirection === "return" ? " is-active" : "");
+      returnDirBtn.textContent = returnLabel;
+      returnDirBtn.addEventListener("click", function () {
+        returnDirBtn.classList.add("is-active");
+        forwardDirBtn.classList.remove("is-active");
+        setDirection("return");
+      });
+
+      dirRow.appendChild(forwardDirBtn);
+      dirRow.appendChild(returnDirBtn);
+
       var opLabel = document.createElement("div");
       opLabel.className = "section-label";
       opLabel.textContent = "Which operator?";
@@ -613,6 +653,8 @@
         }
       });
 
+      picker.appendChild(dirLabel);
+      picker.appendChild(dirRow);
       picker.appendChild(opLabel);
       picker.appendChild(opRow);
       picker.appendChild(crowdLabel);
