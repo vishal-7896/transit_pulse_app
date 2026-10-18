@@ -226,6 +226,7 @@ def register_user():
 
         return jsonify({
             "status": "ok",
+            "user_id":user.id,
             "user": {
                 "id": user.id,
                 "phone": user.phone,
