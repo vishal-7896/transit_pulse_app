@@ -39,7 +39,12 @@
     forwardButton.textContent = forwardLabel;
     returnButton.textContent = returnLabel;
 
-    var selectedDirection = "forward";
+    forwardButton.classList.remove("is-active");
+    returnButton.classList.remove("is-active");
+    forwardButton.setAttribute("aria-pressed", "false");
+    returnButton.setAttribute("aria-pressed", "false");
+
+    var selectedDirection = null;
     var selectedStop = null;
     var stops = [];
     var sightingCooldownActive = false;
@@ -328,7 +333,7 @@
 
       var etaMeta = document.createElement("p");
       etaMeta.className = "eta-meta";
-      etaMeta.textContent = "Select the stop, then check the latest backend data.";
+      etaMeta.textContent = "Select direction above, then check ETA.";
 
       var actions = document.createElement("div");
       actions.className = "stop-actions";
@@ -409,7 +414,10 @@
       var selectedEta = details.querySelector(".eta-value");
       var selectedMeta = details.querySelector(".eta-meta");
       if (selectedEta) selectedEta.textContent = "—";
-      if (selectedMeta) selectedMeta.textContent = "Ready to check the latest ETA for this stop.";
+      if (selectedMeta) {
+        selectedMeta.className = "eta-meta";
+        selectedMeta.textContent = selectedDirection ? "Ready to check the latest ETA for this stop." : "Select direction above, then check ETA.";
+      }
     }
 
     function setDirection(direction) {
@@ -420,17 +428,34 @@
       forwardButton.setAttribute("aria-pressed", String(direction === "forward"));
       returnButton.setAttribute("aria-pressed", String(direction === "return"));
 
+      var picker = document.getElementById("sighting-picker");
+      if (picker) {
+        var fBtn = picker.querySelector(".picker-dir-forward");
+        var rBtn = picker.querySelector(".picker-dir-return");
+        if (fBtn) fBtn.classList.toggle("is-active", direction === "forward");
+        if (rBtn) rBtn.classList.toggle("is-active", direction === "return");
+      }
+
       document.querySelectorAll(".eta-value").forEach(function (value) {
         value.textContent = "—";
       });
       document.querySelectorAll(".eta-meta").forEach(function (meta) {
-        meta.textContent = "Direction changed. Check ETA again for the new direction.";
+        meta.className = "eta-meta";
+        meta.textContent = "Direction set to " + (direction === "forward" ? forwardLabel : returnLabel) + ". Tap Check ETA.";
       });
     }
 
     async function loadEta(stop, button, etaValue, etaMeta) {
       if (!selectedStop || String(selectedStop.route_stop_id) !== String(stop.route_stop_id)) {
         showInlineInstruction("Please select this stop first.");
+        return;
+      }
+
+      if (!selectedDirection) {
+        etaMeta.className = "eta-meta eta-meta-warning";
+        etaMeta.textContent = "Please select a direction (To Delhi / To Hapur) first.";
+        var dirCard = document.querySelector(".direction-card");
+        if (dirCard) dirCard.scrollIntoView({ behavior: "smooth", block: "center" });
         return;
       }
 
@@ -530,7 +555,7 @@
 
       var forwardDirBtn = document.createElement("button");
       forwardDirBtn.type = "button";
-      forwardDirBtn.className = "direction-button" + (selectedDirection === "forward" ? " is-active" : "");
+      forwardDirBtn.className = "direction-button picker-dir-forward" + (selectedDirection === "forward" ? " is-active" : "");
       forwardDirBtn.textContent = forwardLabel;
       forwardDirBtn.addEventListener("click", function () {
         forwardDirBtn.classList.add("is-active");
@@ -540,7 +565,7 @@
 
       var returnDirBtn = document.createElement("button");
       returnDirBtn.type = "button";
-      returnDirBtn.className = "direction-button" + (selectedDirection === "return" ? " is-active" : "");
+      returnDirBtn.className = "direction-button picker-dir-return" + (selectedDirection === "return" ? " is-active" : "");
       returnDirBtn.textContent = returnLabel;
       returnDirBtn.addEventListener("click", function () {
         returnDirBtn.classList.add("is-active");
@@ -614,6 +639,13 @@
       submitBtn.className = "wide-button wide-button-secondary report-button";
       submitBtn.textContent = "Confirm & Submit";
       submitBtn.addEventListener("click", async function () {
+        if (!selectedDirection) {
+          etaMeta.className = "eta-meta eta-meta-warning";
+          etaMeta.textContent = "Please choose which direction the bus is heading.";
+          dirRow.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          return;
+        }
+
         setButtonLoading(submitBtn, "Sending...");
 
         try {
