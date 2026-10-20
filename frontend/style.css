@@ -42,7 +42,6 @@ body {
   line-height: 1.45;
 }
 
-/* Subtle decorative grain/particles for the dark transit-night background. */
 .page::before {
   content: "";
   position: fixed;
@@ -120,8 +119,6 @@ a {
 .mobile-shell {
   max-width: 720px;
 }
-
-/* ---------------- Landing ---------------- */
 
 .landing-shell {
   min-height: 100vh;
@@ -289,8 +286,6 @@ a {
   color: #747d9f;
   font-size: 11px;
 }
-
-/* ---------------- Shared ---------------- */
 
 .back-link {
   display: inline-flex;
@@ -492,8 +487,6 @@ a {
   font-size: 18px;
 }
 
-/* ---------------- Form ---------------- */
-
 .page-form .mobile-shell {
   padding-top: 12px;
 }
@@ -609,8 +602,6 @@ a {
   font-weight: 800;
 }
 
-/* ---------------- Routes ---------------- */
-
 .routes-list {
   display: grid;
   gap: 10px;
@@ -667,8 +658,6 @@ a {
   font-size: 22px;
   text-align: center;
 }
-
-/* ---------------- Stops ---------------- */
 
 .route-header {
   display: flex;
@@ -819,10 +808,11 @@ a {
 }
 
 .eta-meta {
-  min-height: 20px;
+  min-height: 22px;
   margin-top: 8px;
-  color: var(--text-muted);
-  font-size: 11px;
+  color: #d1d5db;
+  font-size: 13.5px;
+  line-height: 1.45;
 }
 
 .eta-meta-success { color: #a5efd2; }
@@ -839,8 +829,6 @@ a {
 .stop-actions .wide-button {
   min-height: 46px;
 }
-
-/* ---------------- Animations ---------------- */
 
 @keyframes pulse {
   0%, 100% { transform: scale(0.92); opacity: 0.7; }
@@ -896,12 +884,10 @@ a {
   }
 }
 
-/* ================= Accent + icon system ================= */
 :root {
-  --accent: #6e7dff; /* the one accent colour; used for active states and the nav */
+  --accent: #6e7dff; 
 }
 
-/* ---------------- Bottom nav ---------------- */
 body.has-bottom-nav .mobile-shell {
   padding-bottom: calc(92px + env(safe-area-inset-bottom));
 }
@@ -956,7 +942,6 @@ body.has-bottom-nav .mobile-shell {
 
 .bottom-nav-item.is-active svg { fill: rgba(110, 125, 255, 0.18); }
 
-/* ---------------- Star button ---------------- */
 .stop-card { position: relative; }
 
 .stop-card .stop-select-button { padding-right: 58px; }
@@ -983,7 +968,6 @@ body.has-bottom-nav .mobile-shell {
 .star-button:active { transform: scale(0.9); }
 .star-button.is-starred { color: var(--warning); }
 
-/* ---------------- Starred lists ---------------- */
 .starred-section { margin-bottom: 22px; }
 
 .starred-list { display: grid; gap: 10px; }
@@ -1013,11 +997,9 @@ body.has-bottom-nav .mobile-shell {
   text-decoration: none;
 }
 
-/* ---------------- Live countdown ---------------- */
 .eta-value.is-ticking { font-variant-numeric: tabular-nums; }
 .eta-value.is-arriving { color: var(--success); }
 
-/* ================= Home page ================= */
 .home-shell { padding-top: 8px; }
 
 .home-hero {
@@ -1060,7 +1042,6 @@ body.has-bottom-nav .mobile-shell {
   max-width: 62ch;
 }
 
-/* ---- Story card ---- */
 .story-card {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -1101,7 +1082,6 @@ body.has-bottom-nav .mobile-shell {
 .story-body p { margin-top: 8px; color: var(--text-soft); font-size: 14px; }
 .story-body .story-tag { color: var(--text-muted); font-size: 12px; font-weight: 700; }
 
-/* ---- Pain list ---- */
 .pain-list { list-style: none; display: grid; gap: 10px; margin-top: 14px; }
 .pain-list li {
   display: grid;
@@ -1121,7 +1101,6 @@ body.has-bottom-nav .mobile-shell {
 .pain-list strong { font-size: 14px; }
 .pain-list p { margin-top: 2px; color: var(--text-muted); font-size: 13px; }
 
-/* ---- Compare card ---- */
 .compare-card {
   display: grid;
   gap: 18px;
@@ -1156,7 +1135,6 @@ body.has-bottom-nav .mobile-shell {
 .compare-note { margin-top: 8px; color: var(--text-muted); font-size: 12px; }
 .compare-foot { color: var(--text-muted); font-size: 11px; font-style: italic; }
 
-/* ---- Steps ---- */
 .steps { list-style: none; display: grid; gap: 12px; margin-top: 18px; }
 .step {
   display: grid;
@@ -1177,7 +1155,6 @@ body.has-bottom-nav .mobile-shell {
 .step h3 { font-size: 15px; letter-spacing: -0.01em; }
 .step p { margin-top: 4px; color: var(--text-muted); font-size: 13px; }
 
-/* ---- Features ---- */
 .feature-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1193,7 +1170,6 @@ body.has-bottom-nav .mobile-shell {
 .feature strong { font-size: 14px; }
 .feature p { margin-top: 4px; color: var(--text-muted); font-size: 12px; }
 
-/* ---- Final CTA ---- */
 .home-cta { text-align: center; }
 .home-cta .home-lead { margin-left: auto; margin-right: auto; }
 .home-cta .landing-actions { max-width: 420px; margin-left: auto; margin-right: auto; }
@@ -1209,13 +1185,11 @@ body.has-bottom-nav .mobile-shell {
   .feature-grid { grid-template-columns: repeat(4, 1fr); }
 }
 
-/* ================= Hero v2: animated bus + wordmark ================= */
 .home-hero .route-art {
   height: 150px;
   margin-bottom: 14px;
 }
 
-/* soft breathing glow behind the bus */
 .home-hero .route-art::before {
   content: "";
   position: absolute;
@@ -1225,7 +1199,6 @@ body.has-bottom-nav .mobile-shell {
   animation: glowBreath 4s ease-in-out infinite;
 }
 
-/* the road: dashes slide backwards so the bus looks like it is driving */
 .home-hero .route-line {
   top: 72%;
   height: 2px;
@@ -1269,7 +1242,6 @@ body.has-bottom-nav .mobile-shell {
   animation: busPulseDraw 3.2s ease-in-out infinite;
 }
 
-/* ---- Wordmark ---- */
 .home-hero .brand-title {
   margin-top: 8px;
   font-family: "Sora", Inter, ui-sans-serif, -apple-system, "Segoe UI", Arial, sans-serif;
@@ -1291,7 +1263,6 @@ body.has-bottom-nav .mobile-shell {
   color: var(--text);
 }
 
-/* "Pulse": bold, with a wave of light travelling through the letters */
 .home-hero .brand-title .ch-p {
   font-weight: 700;
   color: transparent;
@@ -1327,7 +1298,6 @@ body.has-bottom-nav .mobile-shell {
   animation-delay: 1.2s;
 }
 
-/* The eyebrow and tagline fade in after the wordmark */
 .home-hero .eyebrow,
 .home-hero .brand-copy,
 .home-hero .landing-actions {
@@ -1369,7 +1339,6 @@ body.has-bottom-nav .mobile-shell {
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* ================= Thank-you popup (after posting a sighting) ================= */
 .thanks-toast {
   position: fixed;
   inset: 0;
@@ -1377,7 +1346,7 @@ body.has-bottom-nav .mobile-shell {
   display: grid;
   place-items: center;
   padding: 24px;
-  pointer-events: none;           /* never blocks the page behind it */
+  pointer-events: none;           
   opacity: 0;
   transition: opacity 220ms ease;
 }
@@ -1427,7 +1396,6 @@ body.has-bottom-nav .mobile-shell {
 .thanks-card p { margin-top: 6px; color: var(--text-soft); font-size: 14px; }
 .thanks-card small { display: block; margin-top: 12px; color: var(--text-muted); font-size: 11px; }
 
-/* tiny celebratory sparks */
 .thanks-spark {
   position: absolute;
   top: 44px;
@@ -1452,10 +1420,8 @@ body.has-bottom-nav .mobile-shell {
   100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(0.3); }
 }
 
-/* the middle route marker would sit behind the bus and read as a ghost wheel */
 .home-hero .route-node-2 { display: none; }
 
-/* popup card: fully opaque so page text never shows through */
 .thanks-card {
   background-color: #131a37;
   background-image:
