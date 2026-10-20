@@ -1,5 +1,5 @@
 import datetime
-from sqlalchemy import select
+from sqlalchemy import select, func
 from db import get_session
 from alchemy_models import RouteStop, Stop, Sighting, Route
 
@@ -13,6 +13,19 @@ def calculate_eta(route_stop_id, direction='forward'):
 
         route_id = this_stop.route_id
         user_stop_order = this_stop.stop_order
+
+        route = session.get(Route, route_id)
+        fallback_freq = route.frequency_minutes if route and route.frequency_minutes else 15
+
+        today_start = datetime.datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        today_count = session.scalar(
+            select(func.count(Sighting.id))
+            .join(RouteStop, Sighting.route_stop_id == RouteStop.id)
+            .where(
+                RouteStop.route_id == route_id,
+                Sighting.seen_at >= today_start
+            )
+        ) or 0
 
         route_stops = session.scalars(
             select(RouteStop)
@@ -41,12 +54,19 @@ def calculate_eta(route_stop_id, direction='forward'):
         sightings = session.execute(stmt).all()
 
         if not sightings:
-            return {"status": "no data"}
+            return {
+                "status": "scheduled",
+                "eta minutes": fallback_freq,
+                "reports_count": 0,
+                "riders_helped_today": today_count,
+                "message": f"About {fallback_freq} min, based on usual timing, no live reports"
+            }
 
         curr_time = datetime.datetime.utcnow()
         approaching_buses = []
         passed_buses = []
-        has_fresh_sighting = False
+        fresh_sightings_count = 0
+        freshest_seen_at = None
 
         for sighting_stop_order, stop_name, seen_at in sightings:
             if isinstance(seen_at, str):
@@ -54,11 +74,14 @@ def calculate_eta(route_stop_id, direction='forward'):
             else:
                 seen_at_formatted = seen_at
 
+            if freshest_seen_at is None:
+                freshest_seen_at = seen_at_formatted
+
             age = curr_time - seen_at_formatted
             if age > datetime.timedelta(minutes=30):
                 continue
 
-            has_fresh_sighting = True
+            fresh_sightings_count += 1
             elapsed = age.total_seconds()
 
             min_order = min(sighting_stop_order, user_stop_order)
@@ -76,9 +99,18 @@ def calculate_eta(route_stop_id, direction='forward'):
             else:
                 passed_buses.append(eta_seconds)
 
-        if not has_fresh_sighting:
-            first_seen_at = sightings[0].seen_at
-            return {"status": "stale", "seen at": str(first_seen_at)}
+        seen_ago_seconds = int((curr_time - freshest_seen_at).total_seconds()) if freshest_seen_at else 0
+        seen_ago_minutes = max(0, round(seen_ago_seconds / 60))
+
+        if fresh_sightings_count == 0:
+            return {
+                "status": "scheduled",
+                "eta minutes": fallback_freq,
+                "reports_count": 0,
+                "seen_ago_minutes": seen_ago_minutes,
+                "riders_helped_today": today_count,
+                "message": f"About {fallback_freq} min, based on usual timing, no live reports"
+            }
 
         if approaching_buses:
             approaching_buses.sort(key=lambda b: b["eta_seconds"])
@@ -88,7 +120,11 @@ def calculate_eta(route_stop_id, direction='forward'):
                 "status": "live",
                 "eta seconds": earliest["eta_seconds"],
                 "eta minutes": earliest["eta_minutes"],
-                "spotted at": earliest["spotted_at"]
+                "spotted at": earliest["spotted_at"],
+                "reports_count": fresh_sightings_count,
+                "seen_ago_minutes": seen_ago_minutes,
+                "seen_ago_seconds": seen_ago_seconds,
+                "riders_helped_today": today_count
             }
 
             if len(approaching_buses) > 1:
@@ -101,12 +137,19 @@ def calculate_eta(route_stop_id, direction='forward'):
             return response
 
         if passed_buses:
-            route = session.get(Route, route_id)
-            freq_min = route.frequency_minutes if route and route.frequency_minutes else 30
             return {
                 "status": "passed",
                 "message": "Bus may just have passed",
-                "next bus approx mins": freq_min
+                "next bus approx mins": fallback_freq,
+                "reports_count": fresh_sightings_count,
+                "seen_ago_minutes": seen_ago_minutes,
+                "riders_helped_today": today_count
             }
 
-        return {"status": "no data"}
+        return {
+            "status": "scheduled",
+            "eta minutes": fallback_freq,
+            "reports_count": 0,
+            "riders_helped_today": today_count,
+            "message": f"About {fallback_freq} min, based on usual timing, no live reports"
+        }
