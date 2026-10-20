@@ -153,6 +153,32 @@
       return null;
     }
 
+    function formatRelativeAgo(mins) {
+      if (mins === undefined || mins === null) return "";
+      if (mins <= 0) return "just now";
+      if (mins < 60) return mins + " min ago";
+      var hrs = Math.floor(mins / 60);
+      return hrs + (hrs === 1 ? " hr ago" : " hrs ago");
+    }
+
+    function buildConfidenceText(eta) {
+      var parts = [];
+
+      var reports = eta.reports_count || 0;
+      if (reports > 0) {
+        var reportText = reports + (reports === 1 ? " report" : " reports");
+        var ago = formatRelativeAgo(eta.seen_ago_minutes);
+        parts.push(ago ? reportText + ", " + ago : reportText);
+      }
+
+      var riders = eta.riders_helped_today || 0;
+      if (riders > 0) {
+        parts.push(riders + (riders === 1 ? " rider helped today" : " riders helped today"));
+      }
+
+      return parts.length > 0 ? " · " + parts.join(" · ") : "";
+    }
+
     function startCountdown(stop, eta, etaValue, etaMeta) {
       var parsed = parseEta(eta);
       if (!parsed) return false;
@@ -160,9 +186,11 @@
       var sameStop = countdownStopId === String(stop.route_stop_id) && countdownEndAt !== null;
       var left = sameStop ? (countdownEndAt - Date.now()) / 1000 : -1;
 
+      var confidence = buildConfidenceText(eta);
+
       if (sameStop && !parsed.precise && left > 0 && Math.abs(left - parsed.sec) <= 60) {
         etaMeta.className = "eta-meta";
-        etaMeta.textContent = "Live ETA \u00b7 counting down, re-syncs automatically.";
+        etaMeta.textContent = "Live ETA · counting down" + confidence;
         return true;
       }
 
@@ -189,7 +217,7 @@
       tick();
       tickTimer = window.setInterval(tick, 1000);
       etaMeta.className = "eta-meta";
-      etaMeta.textContent = "Live ETA \u00b7 counting down, re-syncs automatically.";
+      etaMeta.textContent = "Live ETA · counting down" + confidence;
 
       refetchTimer = window.setInterval(async function () {
         if (document.hidden) return;
@@ -489,32 +517,41 @@
         return;
       }
 
+      var confidence = buildConfidenceText(eta);
+
       if (eta.status === "live") {
         if (currentEtaStop && startCountdown(currentEtaStop, eta, etaValue, etaMeta)) return;
         stopCountdown();
         etaValue.textContent = getDisplayValue(eta["eta minutes"], "—") + " min";
-        etaMeta.textContent = "Live ETA from the backend.";
+        etaMeta.textContent = "Live ETA" + confidence;
         return;
       }
-      if (eta.status === "stale") {
-        etaValue.textContent = "Stale";
-        etaMeta.textContent = eta["seen at"] ? "Last sighting: " + formatDateTime(eta["seen at"]) : "The available sighting data is old.";
+
+      if (eta.status === "scheduled" || eta.status === "stale" || eta.status === "no data") {
+        stopCountdown();
+        var mins = eta["eta minutes"] || 15;
+        etaValue.textContent = "~" + mins + " min";
+
+        var agoNotice = "";
+        if (eta.seen_ago_minutes !== undefined && eta.seen_ago_minutes > 0) {
+          agoNotice = " · Last bus seen " + formatRelativeAgo(eta.seen_ago_minutes);
+        }
+
+        var ridersText = (eta.riders_helped_today && eta.riders_helped_today > 0)
+          ? " · " + eta.riders_helped_today + " riders helped today"
+          : " · Tap 'I see the bus' if you spot it!";
+
+        etaMeta.textContent = "About " + mins + " min, based on usual timing, no live reports" + agoNotice + ridersText;
+        etaMeta.className = "eta-meta";
         return;
       }
 
       if (eta.status === "passed") {
         etaValue.textContent = "Just passed";
-        if (eta["next bus approx mins"] !== undefined && eta["next bus approx mins"] !== null) {
-          etaMeta.textContent = (eta.message || "The bus may have passed.") + " Next bus approx " + eta["next bus approx mins"] + " min.";
-        } else {
-          etaMeta.textContent = eta.message || "The bus may have just passed.";
-        }
-        return;
-      }
-
-      if (eta.status === "no data") {
-        etaValue.textContent = "No data";
-        etaMeta.textContent = "No recent bus sighting is available for this direction.";
+        var passedAgo = formatRelativeAgo(eta.seen_ago_minutes);
+        var passedText = passedAgo ? " (seen " + passedAgo + ")" : "";
+        var approxMins = eta["next bus approx mins"] || 15;
+        etaMeta.textContent = "Bus may just have passed" + passedText + ". Next bus approx " + approxMins + " min" + confidence;
         return;
       }
 
@@ -765,12 +802,6 @@
     function getDisplayValue(value, fallback) {
       if (value === undefined || value === null || String(value).trim() === "") return fallback;
       return String(value);
-    }
-
-    function formatDateTime(value) {
-      var date = new Date(value);
-      if (Number.isNaN(date.getTime())) return String(value);
-      return date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
     }
 
     function getStopsError(error) {
