@@ -533,15 +533,15 @@
         etaValue.textContent = "~" + mins + " min";
 
         var agoNotice = "";
-        if (eta.seen_ago_minutes !== undefined && eta.seen_ago_minutes > 0) {
+        if (eta.seen_ago_minutes !== undefined && eta.seen_ago_minutes > 0 && eta.seen_ago_minutes <= 120) {
           agoNotice = " · Last bus seen " + formatRelativeAgo(eta.seen_ago_minutes);
         }
 
         var ridersText = (eta.riders_helped_today && eta.riders_helped_today > 0)
           ? " · " + eta.riders_helped_today + " riders helped today"
-          : " · Tap 'I see the bus' if you spot it!";
+          : "";
 
-        etaMeta.textContent = "About " + mins + " min, based on usual timing, no live reports" + agoNotice + ridersText;
+        etaMeta.textContent = "About " + mins + " min (usual timing) · No live reports right now" + agoNotice + ridersText;
         etaMeta.className = "eta-meta";
         return;
       }
