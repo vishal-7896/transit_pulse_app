@@ -1,5 +1,5 @@
 import datetime
-from sqlalchemy import select, func
+from sqlalchemy import select
 from db import get_session
 from alchemy_models import RouteStop, Stop, Sighting, Route
 
@@ -17,16 +17,6 @@ def calculate_eta(route_stop_id, direction='forward'):
         route = session.get(Route, route_id)
         fallback_freq = route.frequency_minutes if route and route.frequency_minutes else 15
 
-        today_start = datetime.datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-        today_count = session.scalar(
-            select(func.count(Sighting.id))
-            .join(RouteStop, Sighting.route_stop_id == RouteStop.id)
-            .where(
-                RouteStop.route_id == route_id,
-                Sighting.seen_at >= today_start
-            )
-        ) or 0
-
         route_stops = session.scalars(
             select(RouteStop)
             .where(RouteStop.route_id == route_id)
@@ -41,7 +31,7 @@ def calculate_eta(route_stop_id, direction='forward'):
             order_filter = RouteStop.stop_order <= user_stop_order
 
         stmt = (
-            select(RouteStop.stop_order, Stop.name, Sighting.seen_at)
+            select(RouteStop.stop_order, Stop.name, Sighting.seen_at, Sighting.user_id)
             .join(RouteStop, Sighting.route_stop_id == RouteStop.id)
             .join(Stop, RouteStop.stop_id == Stop.id)
             .where(
@@ -58,7 +48,6 @@ def calculate_eta(route_stop_id, direction='forward'):
                 "status": "scheduled",
                 "eta minutes": fallback_freq,
                 "reports_count": 0,
-                "riders_helped_today": today_count,
                 "message": f"About {fallback_freq} min, based on usual timing, no live reports"
             }
 
@@ -67,19 +56,25 @@ def calculate_eta(route_stop_id, direction='forward'):
         passed_buses = []
         fresh_sightings_count = 0
         freshest_seen_at = None
+        seen_users = set()
 
-        for sighting_stop_order, stop_name, seen_at in sightings:
+        for sighting_stop_order, stop_name, seen_at, user_id in sightings:
             if isinstance(seen_at, str):
                 seen_at_formatted = datetime.datetime.fromisoformat(seen_at)
             else:
                 seen_at_formatted = seen_at
 
-            if freshest_seen_at is None:
-                freshest_seen_at = seen_at_formatted
-
             age = curr_time - seen_at_formatted
             if age > datetime.timedelta(minutes=30):
                 continue
+
+            if user_id and user_id in seen_users:
+                continue
+            if user_id:
+                seen_users.add(user_id)
+
+            if freshest_seen_at is None:
+                freshest_seen_at = seen_at_formatted
 
             fresh_sightings_count += 1
             elapsed = age.total_seconds()
@@ -108,7 +103,6 @@ def calculate_eta(route_stop_id, direction='forward'):
                 "eta minutes": fallback_freq,
                 "reports_count": 0,
                 "seen_ago_minutes": seen_ago_minutes,
-                "riders_helped_today": today_count,
                 "message": f"About {fallback_freq} min, based on usual timing, no live reports"
             }
 
@@ -123,8 +117,7 @@ def calculate_eta(route_stop_id, direction='forward'):
                 "spotted at": earliest["spotted_at"],
                 "reports_count": fresh_sightings_count,
                 "seen_ago_minutes": seen_ago_minutes,
-                "seen_ago_seconds": seen_ago_seconds,
-                "riders_helped_today": today_count
+                "seen_ago_seconds": seen_ago_seconds
             }
 
             if len(approaching_buses) > 1:
@@ -142,14 +135,12 @@ def calculate_eta(route_stop_id, direction='forward'):
                 "message": "Bus may just have passed",
                 "next bus approx mins": fallback_freq,
                 "reports_count": fresh_sightings_count,
-                "seen_ago_minutes": seen_ago_minutes,
-                "riders_helped_today": today_count
+                "seen_ago_minutes": seen_ago_minutes
             }
 
         return {
             "status": "scheduled",
             "eta minutes": fallback_freq,
             "reports_count": 0,
-            "riders_helped_today": today_count,
             "message": f"About {fallback_freq} min, based on usual timing, no live reports"
         }
