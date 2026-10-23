@@ -799,6 +799,44 @@ a {
   text-transform: uppercase;
 }
 
+.eta-value-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.live-indicator {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #51d6a1;
+  box-shadow: 0 0 8px #51d6a1;
+  animation: livePulse 1.4s ease-in-out infinite;
+}
+
+.live-text {
+  color: #51d6a1;
+  font-size: 9.5px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+@keyframes livePulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.85); }
+}
+
 .eta-value {
   font-size: clamp(30px, 8vw, 40px);
   line-height: 0.98;
@@ -811,7 +849,7 @@ a {
   min-height: 22px;
   margin-top: 8px;
   color: #d1d5db;
-  font-size: 13.5px;
+  font-size: 14px;
   line-height: 1.45;
 }
 
