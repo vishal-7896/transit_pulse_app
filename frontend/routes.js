@@ -33,6 +33,11 @@
     var starredSection = document.getElementById("starred-section");
     if (starredList && window.TransitPulseStarredUI) {
       window.TransitPulseStarredUI.render(starredList, starredSection);
+      if (userId && window.TransitPulseFavorites && window.TransitPulseFavorites.sync) {
+        window.TransitPulseFavorites.sync(userId).then(function () {
+          window.TransitPulseStarredUI.render(starredList, starredSection);
+        });
+      }
     }
 
     loadRoutes();

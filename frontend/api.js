@@ -1,4 +1,3 @@
-// api.js
 (function () {
   "use strict";
 
@@ -29,6 +28,15 @@ var API_BASE_URL = (configuredBase || defaultBase).replace(/\/$/, "");
     },
     reportSighting: function (payload) {
       return request("/sighting", { method: "POST", body: payload });
+    },
+    getFavorites: function (userId) {
+      return request("/favorites?user_id=" + encodeURIComponent(String(userId)), { method: "GET" });
+    },
+    toggleFavorite: function (userId, routeStopId) {
+      return request("/favorites/toggle", {
+        method: "POST",
+        body: { user_id: userId, route_stop_id: routeStopId }
+      });
     }
   };
 
@@ -40,7 +48,6 @@ var API_BASE_URL = (configuredBase || defaultBase).replace(/\/$/, "");
       }
     };
 
-    // --- AUTO-ATTACH FIREBASE AUTH TOKEN ---
     if (window.firebase && firebase.auth().currentUser) {
       try {
         var idToken = await firebase.auth().currentUser.getIdToken();
@@ -49,7 +56,6 @@ var API_BASE_URL = (configuredBase || defaultBase).replace(/\/$/, "");
         console.warn("Could not retrieve Firebase token:", err);
       }
     }
-    // ----------------------------------------
 
     if (options && options.body !== undefined) {
       requestOptions.headers["Content-Type"] = "application/json";

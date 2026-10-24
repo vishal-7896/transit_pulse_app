@@ -46,6 +46,7 @@ self.addEventListener('fetch', (event) => {
       url.pathname.startsWith('/eta') || 
       url.pathname.startsWith('/operators') || 
       url.pathname.startsWith('/sighting') ||
+      url.pathname.startsWith('/favorites') ||
       (url.pathname === '/register' && event.request.method === 'POST') ||
       url.pathname.startsWith('/admin')) {
     return;
