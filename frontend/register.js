@@ -1,4 +1,3 @@
-// register.js
 (function () {
   "use strict";
 
@@ -13,10 +12,9 @@
 
     if (!form || !phoneInput || !registerButton || !messageBox) return;
 
-    var confirmationResult = null; // Stores Firebase OTP confirmation
-    var step = "phone"; // "phone" or "otp"
+    var confirmationResult = null; 
+    var step = "phone"; 
 
-    // Set up invisible reCAPTCHA
     window.recaptchaVerifier = new firebase.auth.RecaptchaVerifier("recaptcha-container", {
       size: "invisible"
     });
@@ -38,7 +36,6 @@
       var name = nameInput.value.trim() || "Commuter";
       var phone = phoneInput.value.trim();
 
-      // STEP 1: SEND OTP
       if (step === "phone") {
         if (!/^\d{10}$/.test(phone)) {
           TransitPulseUI.showMessage(messageBox, "Phone number must contain exactly 10 digits.", "error");
@@ -55,7 +52,6 @@
             window.recaptchaVerifier
           );
 
-          // Switch UI to OTP step
           step = "otp";
           otpGroup.classList.remove("is-hidden");
           phoneInput.disabled = true;
@@ -71,7 +67,6 @@
         return;
       }
 
-      // STEP 2: VERIFY OTP & SYNC WITH FLASK
       if (step === "otp") {
         var otp = otpInput.value.trim();
         if (!/^\d{6}$/.test(otp)) {
@@ -83,18 +78,17 @@
         setSubmitting(true, "Verifying OTP...");
 
         try {
-          // Confirm OTP with Firebase
+
           var userCredential = await confirmationResult.confirm(otp);
 
-          // Call Flask backend (api.js automatically adds Bearer token!)
           var response = await TransitPulseAPI.register({ name: name });
 
           if (!response || response.user_id === undefined) {
             throw new Error("Registration succeeded with Firebase, but Flask failed to link profile.");
           }
 
-          // Save to local storage
-          TransitPulseStorage.saveUser(response.user_id, name);
+          var savedName = (response.user && response.user.name) || name || "Commuter";
+          TransitPulseStorage.saveUser(response.user_id, savedName);
           TransitPulseUI.showMessage(messageBox, "Verified! Opening your routes...", "success");
 
           window.setTimeout(function () {
