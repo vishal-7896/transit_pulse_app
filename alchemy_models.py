@@ -4,10 +4,8 @@ from datetime import datetime
 from sqlalchemy import create_engine, String, Integer, Float, ForeignKey, CheckConstraint, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-
 class Base(DeclarativeBase):
     pass
-
 
 class Operator(Base):
     """Reference list only — seeded by admin, selected by users during sighting."""
@@ -60,7 +58,6 @@ class RouteStop(Base):
     stop: Mapped["Stop"] = relationship(back_populates="route_stops")
     sightings: Mapped[List["Sighting"]] = relationship(back_populates="route_stop")
 
-
 class User(Base):
     __tablename__ = "user"
 
@@ -71,7 +68,18 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(default=func.now())
 
     sightings: Mapped[List["Sighting"]] = relationship(back_populates="user")
+    favorites: Mapped[List["UserFavorite"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
+class UserFavorite(Base):
+    __tablename__ = "user_favorite"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id"))
+    route_stop_id: Mapped[int] = mapped_column(ForeignKey("route_stop.id"))
+    created_at: Mapped[datetime] = mapped_column(default=func.now())
+
+    user: Mapped["User"] = relationship(back_populates="favorites")
+    route_stop: Mapped["RouteStop"] = relationship()
 
 class Sighting(Base):
     __tablename__ = "sighting"
@@ -93,20 +101,17 @@ class Sighting(Base):
     user: Mapped["User"] = relationship(back_populates="sightings")
     operator: Mapped[Optional["Operator"]] = relationship()
 
-
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Read from .env, fall back to SQLite if not present
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///transitpulse.db")
 
-# Neon/Heroku sometimes provide 'postgres://', but SQLAlchemy 2.0 requires 'postgresql://'
-# Ensure SQLAlchemy uses psycopg2 driver
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg2://", 1)
 elif DATABASE_URL.startswith("postgresql://") and not DATABASE_URL.startswith("postgresql+psycopg2://"):
     DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
 engine = create_engine(DATABASE_URL,pool_pre_ping=True,
     pool_recycle=300)
+Base.metadata.create_all(engine)

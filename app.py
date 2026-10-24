@@ -5,7 +5,7 @@ from sqlalchemy import select, func
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from db import get_session
-from alchemy_models import Route, RouteStop, Sighting, User, Operator
+from alchemy_models import Route, RouteStop, Sighting, User, Operator, UserFavorite
 from eta import calculate_eta
 from auth_middleware import require_auth
 from admin_views import init_admin
@@ -207,6 +207,58 @@ def post_sighting():
 def get_eta(route_stop_id):
     direction = request.args.get('direction', 'forward')
     return calculate_eta(route_stop_id, direction)
+
+
+@app.route('/favorites', methods=['GET'])
+def get_favorites():
+    user_id = request.args.get('user_id')
+    if not user_id:
+        return jsonify([])
+
+    with get_session() as session:
+        stmt = (
+            select(RouteStop, Route, Stop)
+            .join(UserFavorite, UserFavorite.route_stop_id == RouteStop.id)
+            .join(Route, RouteStop.route_id == Route.id)
+            .join(Stop, RouteStop.stop_id == Stop.id)
+            .where(UserFavorite.user_id == int(user_id))
+            .order_by(UserFavorite.created_at.desc())
+        )
+        rows = session.execute(stmt).all()
+        return jsonify([{
+            "route_stop_id": rs.id,
+            "route_id": r.id,
+            "route_name": r.name,
+            "name": s.name,
+            "landmark": s.landmark
+        } for rs, r, s in rows])
+
+
+@app.route('/favorites/toggle', methods=['POST'])
+def toggle_favorite():
+    data = request.get_json() or {}
+    user_id = data.get('user_id')
+    route_stop_id = data.get('route_stop_id')
+
+    if not user_id or not route_stop_id:
+        return jsonify({"error": "user_id and route_stop_id are required"}), 400
+
+    with get_session() as session:
+        stmt = select(UserFavorite).where(
+            UserFavorite.user_id == int(user_id),
+            UserFavorite.route_stop_id == int(route_stop_id)
+        )
+        existing = session.scalars(stmt).first()
+
+        if existing:
+            session.delete(existing)
+            session.commit()
+            return jsonify({"status": "ok", "starred": False})
+        else:
+            fav = UserFavorite(user_id=int(user_id), route_stop_id=int(route_stop_id))
+            session.add(fav)
+            session.commit()
+            return jsonify({"status": "ok", "starred": True})
 
 
 @app.route('/register', methods=['POST'])
