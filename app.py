@@ -5,7 +5,7 @@ from sqlalchemy import select, func
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from db import get_session
-from alchemy_models import Route, RouteStop, Sighting, User, Operator, UserFavorite
+from alchemy_models import Route, RouteStop, Sighting, User, Operator, UserFavorite, Stop
 from eta import calculate_eta
 from auth_middleware import require_auth
 from admin_views import init_admin
@@ -207,6 +207,242 @@ def post_sighting():
 def get_eta(route_stop_id):
     direction = request.args.get('direction', 'forward')
     return calculate_eta(route_stop_id, direction)
+
+
+def mask_user_phone(phone):
+    if not phone:
+        return "Verified Commuter"
+    digits = "".join(c for c in phone if c.isdigit())
+    if len(digits) >= 10:
+        last4 = digits[-4:]
+        prefix = f"+{digits[:-10]} " if len(digits) > 10 else "+91 "
+        return f"{prefix}••••• •{last4}"
+    if len(phone) > 4:
+        return f"••••••{phone[-4:]}"
+    return phone
+
+
+@app.route('/user/<int:user_id>/profile', methods=['GET'])
+def get_user_profile(user_id):
+    with get_session() as session:
+        user = session.get(User, user_id)
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        user_sightings_stmt = select(Sighting).where(Sighting.user_id == user_id).order_by(Sighting.seen_at.asc())
+        user_sightings = session.scalars(user_sightings_stmt).all()
+        total_sightings = len(user_sightings)
+
+        total_favorites = session.scalar(
+            select(func.count(UserFavorite.id)).where(UserFavorite.user_id == user_id)
+        ) or 0
+
+        user_dates = sorted(list({s.seen_at.date() for s in user_sightings if s.seen_at}))
+        streak_days = 0
+        if user_dates:
+            today = datetime.now().date()
+            yesterday = today - timedelta(days=1)
+            if user_dates[-1] in (today, yesterday):
+                curr = user_dates[-1]
+                streak_days = 1
+                for i in range(len(user_dates) - 2, -1, -1):
+                    if user_dates[i] == curr - timedelta(days=1):
+                        streak_days += 1
+                        curr = user_dates[i]
+                    else:
+                        break
+
+        recent_stmt = (
+            select(Sighting, Stop.name, Route.name)
+            .join(RouteStop, Sighting.route_stop_id == RouteStop.id)
+            .join(Stop, RouteStop.stop_id == Stop.id)
+            .join(Route, RouteStop.route_id == Route.id)
+            .where(Sighting.user_id == user_id)
+            .order_by(Sighting.seen_at.desc())
+            .limit(10)
+        )
+        recent_rows = session.execute(recent_stmt).all()
+
+        recent_sightings = []
+        for s, stop_name, route_name in recent_rows:
+            recent_sightings.append({
+                "id": s.id,
+                "stop_name": stop_name,
+                "route_name": route_name,
+                "direction": s.direction,
+                "crowd_level": s.crowd_level,
+                "seen_at": s.seen_at.isoformat() if s.seen_at else None
+            })
+
+        tier = "New Commuter"
+        if total_sightings >= 50:
+            tier = "👑 Transit Legend"
+        elif total_sightings >= 25:
+            tier = "🥇 Route Guardian"
+        elif total_sightings >= 10:
+            tier = "🥈 Silver Scout"
+        elif total_sightings >= 1:
+            tier = "🥉 Bronze Tracker"
+
+        distinct_stop_count = len({s.route_stop_id for s in user_sightings if s.route_stop_id})
+        directions_seen = {s.direction for s in user_sightings if s.direction}
+        early_sightings = [s for s in user_sightings if s.seen_at and 5 <= s.seen_at.hour < 9]
+        night_sightings = [s for s in user_sightings if s.seen_at and s.seen_at.hour >= 20]
+        crowd_sightings = [s for s in user_sightings if s.crowd_level]
+
+        badges = [
+            {
+                "id": "first_spotter",
+                "name": "First Spotter",
+                "desc": "Logged your first verified bus sighting",
+                "emblem": "🎯",
+                "earned": total_sightings >= 1,
+                "earned_date": user_sightings[0].seen_at.strftime("%d %b %Y") if total_sightings >= 1 and user_sightings[0].seen_at else None,
+                "progress": min(total_sightings, 1),
+                "target": 1
+            },
+            {
+                "id": "early_bird",
+                "name": "Early Bird",
+                "desc": "Reported a bus during morning rush (5-9 AM)",
+                "emblem": "🌅",
+                "earned": len(early_sightings) > 0,
+                "earned_date": early_sightings[0].seen_at.strftime("%d %b %Y") if early_sightings and early_sightings[0].seen_at else None,
+                "progress": min(len(early_sightings), 1),
+                "target": 1
+            },
+            {
+                "id": "night_owl",
+                "name": "Night Owl",
+                "desc": "Tracked a late-night bus after 8:00 PM",
+                "emblem": "🌙",
+                "earned": len(night_sightings) > 0,
+                "earned_date": night_sightings[0].seen_at.strftime("%d %b %Y") if night_sightings and night_sightings[0].seen_at else None,
+                "progress": min(len(night_sightings), 1),
+                "target": 1
+            },
+            {
+                "id": "shortcut_master",
+                "name": "Shortcut Master",
+                "desc": "Starred 2 or more frequent bus stops",
+                "emblem": "⭐",
+                "earned": total_favorites >= 2,
+                "earned_date": "Active" if total_favorites >= 2 else None,
+                "progress": min(total_favorites, 2),
+                "target": 2
+            },
+            {
+                "id": "round_tripper",
+                "name": "Round Tripper",
+                "desc": "Spotted buses in both forward and return directions",
+                "emblem": "🔄",
+                "earned": ("forward" in directions_seen and "return" in directions_seen),
+                "earned_date": "Completed" if ("forward" in directions_seen and "return" in directions_seen) else None,
+                "progress": 2 if ("forward" in directions_seen and "return" in directions_seen) else (1 if len(directions_seen) > 0 else 0),
+                "target": 2
+            },
+            {
+                "id": "highway_scout",
+                "name": "Highway Scout",
+                "desc": "Reported buses across 3 distinct stops",
+                "emblem": "🧭",
+                "earned": distinct_stop_count >= 3,
+                "earned_date": "Active" if distinct_stop_count >= 3 else None,
+                "progress": min(distinct_stop_count, 3),
+                "target": 3
+            },
+            {
+                "id": "crowd_reporter",
+                "name": "Crowd Reporter",
+                "desc": "Shared bus occupancy with the community",
+                "emblem": "👥",
+                "earned": len(crowd_sightings) > 0,
+                "earned_date": crowd_sightings[0].seen_at.strftime("%d %b %Y") if crowd_sightings and crowd_sightings[0].seen_at else None,
+                "progress": min(len(crowd_sightings), 1),
+                "target": 1
+            },
+            {
+                "id": "regular_rider",
+                "name": "Regular Rider",
+                "desc": "Reach 10 total verified bus reports",
+                "emblem": "🏅",
+                "earned": total_sightings >= 10,
+                "earned_date": user_sightings[9].seen_at.strftime("%d %b %Y") if total_sightings >= 10 and user_sightings[9].seen_at else None,
+                "progress": min(total_sightings, 10),
+                "target": 10
+            },
+            {
+                "id": "route_guardian",
+                "name": "Route Guardian",
+                "desc": "Reach 25 total verified bus reports",
+                "emblem": "🛡️",
+                "earned": total_sightings >= 25,
+                "earned_date": user_sightings[24].seen_at.strftime("%d %b %Y") if total_sightings >= 25 and user_sightings[24].seen_at else None,
+                "progress": min(total_sightings, 25),
+                "target": 25
+            },
+            {
+                "id": "transit_legend",
+                "name": "Transit Legend",
+                "desc": "Reach 50 total verified bus reports",
+                "emblem": "👑",
+                "earned": total_sightings >= 50,
+                "earned_date": user_sightings[49].seen_at.strftime("%d %b %Y") if total_sightings >= 50 and user_sightings[49].seen_at else None,
+                "progress": min(total_sightings, 50),
+                "target": 50
+            }
+        ]
+
+        milestone_candidates = [b for b in badges if b["id"] in ("regular_rider", "route_guardian", "transit_legend") and not b["earned"]]
+        next_milestone = None
+        if milestone_candidates:
+            target_badge = milestone_candidates[0]
+            remaining = max(0, target_badge["target"] - target_badge["progress"])
+            percent = int((target_badge["progress"] / target_badge["target"]) * 100) if target_badge["target"] else 0
+            next_milestone = {
+                "id": target_badge["id"],
+                "name": target_badge["name"],
+                "desc": target_badge["desc"],
+                "emblem": target_badge["emblem"],
+                "target": target_badge["target"],
+                "progress": target_badge["progress"],
+                "remaining": remaining,
+                "percent": percent
+            }
+
+        earned_count = sum(1 for b in badges if b["earned"])
+
+        return jsonify({
+            "id": user.id,
+            "name": user.name or "Commuter",
+            "phone": mask_user_phone(user.phone),
+            "raw_phone": user.phone or "",
+            "created_at": user.created_at.strftime("%b %Y") if user.created_at else "Recently",
+            "total_sightings": total_sightings,
+            "streak_days": streak_days,
+            "tier": tier,
+            "badges": badges,
+            "earned_badges_count": earned_count,
+            "total_badges_count": len(badges),
+            "next_milestone": next_milestone,
+            "recent_sightings": recent_sightings
+        })
+
+
+@app.route('/user/<int:user_id>/update-name', methods=['POST'])
+def update_user_name(user_id):
+    data = request.get_json() or {}
+    new_name = (data.get('name') or '').strip()
+    if not new_name:
+        return jsonify({"error": "Name is required"}), 400
+
+    with get_session() as session:
+        user = session.get(User, user_id)
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+        user.name = new_name
+        session.commit()
+        return jsonify({"status": "ok", "name": user.name})
 
 
 @app.route('/favorites', methods=['GET'])

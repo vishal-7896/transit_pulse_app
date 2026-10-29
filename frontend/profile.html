@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#10152f">
+  <title>TransitPulse — Commuter Profile</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+          .catch((err) => console.log('SW registration failed:', err));
+      });
+    }
+  </script>
+</head>
+<body class="page page-profile">
+  <main class="mobile-shell">
+    <header class="top-bar">
+      <a class="back-link" href="routes.html">← Back to routes</a>
+      <div class="brand-mini">Transit<span>Pulse</span></div>
+    </header>
+
+    <section class="surface-card profile-card">
+      <div class="profile-header-content">
+        <div class="avatar-wrapper">
+          <div class="avatar-outer-glow"></div>
+          <div class="avatar-outer-ring"></div>
+          <div class="avatar-inner" id="profile-avatar" aria-hidden="true">C</div>
+          <div class="avatar-streak-badge is-hidden" id="avatar-streak-badge">
+            <span class="fire">🔥</span>
+            <span id="avatar-streak-val">0d</span>
+          </div>
+        </div>
+        <div class="profile-user-info">
+          <div class="profile-name-row">
+            <h1 id="profile-name" class="profile-name">Loading...</h1>
+            <button type="button" class="icon-edit-btn" id="edit-name-btn" aria-label="Edit name">✎</button>
+          </div>
+          <p id="profile-phone" class="profile-phone">Loading phone...</p>
+          <div class="profile-badge-row">
+            <span id="profile-tier" class="tier-badge">New Commuter</span>
+            <span class="verified-pill">✓ Verified Phone</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="name-edit-form" class="name-edit-form is-hidden">
+        <input type="text" id="new-name-input" maxlength="60" placeholder="Enter your name" class="profile-name-input">
+        <div class="name-edit-actions">
+          <button type="button" class="ghost-button" id="cancel-name-btn">Cancel</button>
+          <button type="button" class="wide-button wide-button-primary mini-action-btn" id="save-name-btn">Save</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="profile-stats-section">
+      <div class="section-label">MY CONTRIBUTION IMPACT</div>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-icon">🚌</div>
+          <strong class="stat-number" id="stat-sightings">0</strong>
+          <span class="stat-desc">Sightings Shared</span>
+        </div>
+        <div class="stat-card is-highlight">
+          <div class="stat-icon">🔥</div>
+          <strong class="stat-number streak-color" id="stat-streak">0 Days</strong>
+          <span class="stat-desc">Active Streak</span>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">📅</div>
+          <strong class="stat-number stat-subtext" id="stat-joined">—</strong>
+          <span class="stat-desc">Member Since</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="next-milestone-section is-hidden" id="next-milestone-section">
+      <div class="section-label">NEXT MILESTONE</div>
+      <div class="next-badge-card" id="next-badge-card">
+        <div class="next-badge-header">
+          <span class="next-badge-tag">Up Next</span>
+          <span class="next-badge-remaining" id="next-milestone-remaining">0 sightings to unlock</span>
+        </div>
+        <div class="next-badge-body">
+          <div class="next-badge-emblem" id="next-milestone-emblem">🏅</div>
+          <div class="next-badge-details">
+            <div class="next-badge-title" id="next-milestone-title">Regular Rider</div>
+            <div class="next-badge-desc" id="next-milestone-desc">Reach verified reports milestone.</div>
+          </div>
+        </div>
+        <div class="next-badge-progress-wrap">
+          <div class="next-bar-track">
+            <div class="next-bar-fill" id="next-milestone-bar" style="width: 0%;"></div>
+          </div>
+          <div class="next-bar-label">
+            <span>Progress</span>
+            <span id="next-milestone-progress-text">0 / 0</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="badges-section">
+      <div class="section-header-row">
+        <div class="section-label">COMMUTER BADGES</div>
+        <span class="badge-counter-pill" id="badges-counter-pill">0 of 10 Earned</span>
+      </div>
+      <div class="badges-grid" id="badges-grid"></div>
+    </section>
+
+    <section class="activity-section">
+      <div class="section-label">RECENT SIGHTINGS YOU POSTED</div>
+      <div id="activity-loading" class="state-card">
+        <div class="loading-dot" aria-hidden="true"></div>
+        <div>
+          <strong>Loading your activity</strong>
+          <p>Fetching your past reported sightings.</p>
+        </div>
+      </div>
+      <div id="activity-empty" class="state-card is-hidden">
+        <div class="state-icon" aria-hidden="true">🚌</div>
+        <div>
+          <strong>No sightings posted yet</strong>
+          <p>When you spot a bus and tap "I see the bus", your contributions appear here.</p>
+        </div>
+      </div>
+      <div id="activity-list" class="activity-list is-hidden"></div>
+    </section>
+
+    <section class="account-actions-card">
+      <button type="button" class="wide-button wide-button-secondary logout-btn" id="logout-btn">
+        Log Out / Switch Account
+      </button>
+    </section>
+  </main>
+
+  <script src="storage.js"></script>
+  <script src="ui.js"></script>
+  <script src="api.js"></script>
+  <script src="profile.js"></script>
+  <script src="nav.js"></script>
+</body>
+</html>
