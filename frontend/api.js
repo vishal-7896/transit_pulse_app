@@ -2,9 +2,9 @@
   "use strict";
 
   var configuredBase = window.TRANSITPULSE_API_BASE_URL;
-var isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-var defaultBase = isLocal ? "http://" + window.location.hostname + ":5000" : window.location.origin;
-var API_BASE_URL = (configuredBase || defaultBase).replace(/\/$/, "");
+  var isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+  var defaultBase = isLocal ? "http://" + window.location.hostname + ":5000" : window.location.origin;
+  var API_BASE_URL = (configuredBase || defaultBase).replace(/\/$/, "");
 
   window.TransitPulseAPI = {
     getRoutes: function () {
@@ -36,6 +36,15 @@ var API_BASE_URL = (configuredBase || defaultBase).replace(/\/$/, "");
       return request("/favorites/toggle", {
         method: "POST",
         body: { user_id: userId, route_stop_id: routeStopId }
+      });
+    },
+    getUserProfile: function (userId) {
+      return request("/user/" + encodeURIComponent(String(userId)) + "/profile", { method: "GET" });
+    },
+    updateUserName: function (userId, name) {
+      return request("/user/" + encodeURIComponent(String(userId)) + "/update-name", {
+        method: "POST",
+        body: { name: name }
       });
     }
   };
@@ -108,7 +117,7 @@ var API_BASE_URL = (configuredBase || defaultBase).replace(/\/$/, "");
     }
   }
 
-    function getServerErrorMessage(data, status) {
+  function getServerErrorMessage(data, status) {
     if (data && typeof data.message === "string" && !data.message.startsWith("<")) return data.message;
     if (data && typeof data.error === "string") return data.error;
     if (status >= 500) return "Server is waking up. Please tap Try again in a moment.";

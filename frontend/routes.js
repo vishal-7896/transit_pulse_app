@@ -10,6 +10,7 @@
     var routeCount = document.getElementById("route-count");
     var greeting = document.getElementById("greeting");
     var changeUserButton = document.getElementById("change-user-btn");
+    var topAvatarDot = document.getElementById("top-avatar-dot");
 
     var userId = TransitPulseStorage.getUserId();
     if (!userId) {
@@ -19,15 +20,32 @@
 
     var userName = TransitPulseStorage.getUserName() || "there";
     greeting.textContent = "Hi, " + userName + " 👋";
+    if (topAvatarDot && userName) {
+      topAvatarDot.textContent = userName.charAt(0).toUpperCase();
+    }
+
+    if (userId && window.TransitPulseAPI && window.TransitPulseAPI.getUserProfile) {
+      window.TransitPulseAPI.getUserProfile(userId).then(function (profile) {
+        if (profile && profile.name && profile.name !== "Commuter") {
+          greeting.textContent = "Hi, " + profile.name + " 👋";
+          TransitPulseStorage.saveUser(userId, profile.name);
+          if (topAvatarDot) {
+            topAvatarDot.textContent = profile.name.charAt(0).toUpperCase();
+          }
+        }
+      }).catch(function () {});
+    }
 
     retryButton.addEventListener("click", loadRoutes);
-    changeUserButton.addEventListener("click", function () {
-      TransitPulseStorage.clearUser();
-      if (window.firebase){
-        firebase.auth().signOut();
-      }
-      window.location.href = "register.html";
-    });
+    if (changeUserButton) {
+      changeUserButton.addEventListener("click", function () {
+        TransitPulseStorage.clearUser();
+        if (window.firebase) {
+          firebase.auth().signOut();
+        }
+        window.location.href = "register.html";
+      });
+    }
 
     var starredList = document.getElementById("starred-list");
     var starredSection = document.getElementById("starred-section");

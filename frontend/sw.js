@@ -1,4 +1,4 @@
-const CACHE_NAME = 'transitpulse-v2';
+const CACHE_NAME = 'transitpulse-v3';
 
 const ASSETS_TO_CACHE = [
   '/',
@@ -7,6 +7,8 @@ const ASSETS_TO_CACHE = [
   '/routes.js',
   '/stops.html',
   '/stops.js',
+  '/profile.html',
+  '/profile.js',
   '/starred.html',
   '/favorites.js',
   '/style.css',
@@ -47,6 +49,7 @@ self.addEventListener('fetch', (event) => {
       url.pathname.startsWith('/operators') || 
       url.pathname.startsWith('/sighting') ||
       url.pathname.startsWith('/favorites') ||
+      url.pathname.startsWith('/user/') ||
       (url.pathname === '/register' && event.request.method === 'POST') ||
       url.pathname.startsWith('/admin')) {
     return;

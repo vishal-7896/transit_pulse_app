@@ -33,7 +33,7 @@
       event.preventDefault();
       TransitPulseUI.clearMessage(messageBox);
 
-      var name = nameInput.value.trim() || "Commuter";
+      var enteredName = nameInput.value.trim();
       var phone = phoneInput.value.trim();
 
       if (step === "phone") {
@@ -78,16 +78,15 @@
         setSubmitting(true, "Verifying OTP...");
 
         try {
-
           var userCredential = await confirmationResult.confirm(otp);
-
-          var response = await TransitPulseAPI.register({ name: name });
+          var regPayload = enteredName ? { name: enteredName } : {};
+          var response = await TransitPulseAPI.register(regPayload);
 
           if (!response || response.user_id === undefined) {
             throw new Error("Registration succeeded with Firebase, but Flask failed to link profile.");
           }
 
-          var savedName = (response.user && response.user.name) || name || "Commuter";
+          var savedName = (response.user && response.user.name) || enteredName || "Commuter";
           TransitPulseStorage.saveUser(response.user_id, savedName);
           TransitPulseUI.showMessage(messageBox, "Verified! Opening your routes...", "success");
 
