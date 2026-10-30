@@ -113,7 +113,7 @@ a {
 .landing-shell {
   width: min(100%, 760px);
   margin: 0 auto;
-  padding: 18px 16px 36px;
+  padding: max(20px, calc(env(safe-area-inset-top, 0px) + 14px)) 16px 36px;
 }
 
 .mobile-shell {
@@ -488,7 +488,7 @@ a {
 }
 
 .page-form .mobile-shell {
-  padding-top: 12px;
+  padding-top: max(16px, calc(env(safe-area-inset-top, 0px) + 10px));
 }
 
 .form-hero {

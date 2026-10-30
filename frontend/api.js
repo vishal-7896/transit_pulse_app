@@ -8,29 +8,34 @@
 
   window.TransitPulseAPI = {
     getRoutes: function () {
-      return request("/routes", { method: "GET" });
+      return request("/routes");
     },
-
     getStops: function (routeId) {
-      return request("/routes/" + encodeURIComponent(String(routeId)) + "/stops", { method: "GET" });
+      return request("/routes/" + encodeURIComponent(String(routeId)) + "/stops");
     },
-
-    register: function (payload) {
-      return request("/register", { method: "POST", body: payload });
-    },
-
     getEta: function (routeStopId, direction) {
-      var query = new URLSearchParams({ direction: direction });
-      return request("/eta/" + encodeURIComponent(String(routeStopId)) + "?" + query.toString(), { method: "GET" });
+      var query = direction ? "?direction=" + encodeURIComponent(direction) : "";
+      return request("/eta/" + encodeURIComponent(String(routeStopId)) + query, { timeoutMs: 12000 });
     },
-    getOperators:  function () {
-      return request( "/operators",{method:"GET"});
+    getOperators: function () {
+      return request("/operators");
     },
     reportSighting: function (payload) {
-      return request("/sighting", { method: "POST", body: payload });
+      return request("/sighting", {
+        method: "POST",
+        body: payload,
+        timeoutMs: 15000
+      });
+    },
+    register: function (payload) {
+      return request("/register", {
+        method: "POST",
+        body: payload,
+        timeoutMs: 15000
+      });
     },
     getFavorites: function (userId) {
-      return request("/favorites?user_id=" + encodeURIComponent(String(userId)), { method: "GET" });
+      return request("/favorites?user_id=" + encodeURIComponent(String(userId)));
     },
     toggleFavorite: function (userId, routeStopId) {
       return request("/favorites/toggle", {
@@ -57,6 +62,17 @@
       }
     };
 
+    var timeoutMs = (options && options.timeoutMs) || 15000;
+    var controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+    var timeoutId = null;
+
+    if (controller) {
+      requestOptions.signal = controller.signal;
+      timeoutId = window.setTimeout(function () {
+        controller.abort();
+      }, timeoutMs);
+    }
+
     if (window.firebase && firebase.auth().currentUser) {
       try {
         var idToken = await firebase.auth().currentUser.getIdToken();
@@ -76,11 +92,19 @@
     try {
       response = await fetch(API_BASE_URL + path, requestOptions);
     } catch (error) {
-      var networkError = new Error("Unable to connect to the TransitPulse server.");
+      if (timeoutId) window.clearTimeout(timeoutId);
+      var isTimeout = error && (error.name === "AbortError" || String(error).indexOf("aborted") !== -1);
+      var msg = isTimeout
+        ? "Network request timed out. Please check your connection and tap again."
+        : "Unable to connect to the TransitPulse server.";
+      var networkError = new Error(msg);
       networkError.isNetworkError = true;
+      networkError.isTimeout = isTimeout;
       networkError.originalError = error;
       throw networkError;
     }
+
+    if (timeoutId) window.clearTimeout(timeoutId);
 
     var data = await readResponseData(response);
 
@@ -95,25 +119,13 @@
   }
 
   async function readResponseData(response) {
-    var contentType = response.headers.get("content-type") || "";
-
-    if (contentType.includes("application/json")) {
-      try {
-        return await response.json();
-      } catch (error) {
-        var jsonError = new Error("The server returned invalid JSON.");
-        jsonError.status = response.status;
-        throw jsonError;
-      }
-    }
-
     var text = await response.text();
     if (!text) return null;
 
     try {
       return JSON.parse(text);
-    } catch (error) {
-      return { message: text };
+    } catch (parseError) {
+      return { raw: text };
     }
   }
 
@@ -121,6 +133,7 @@
     if (data && typeof data.message === "string" && !data.message.startsWith("<")) return data.message;
     if (data && typeof data.error === "string") return data.error;
     if (status >= 500) return "Server is waking up. Please tap Try again in a moment.";
-    return "The TransitPulse request could not be completed.";
+    if (status === 404) return "Requested resource was not found.";
+    return "Request failed with status " + status + ".";
   }
 })();

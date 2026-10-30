@@ -22,11 +22,16 @@
 
     primaryButtons.forEach(function (btn) {
       btn.addEventListener("click", function () {
-        if (hasUser) {
-          window.location.href = "routes.html";
-        } else {
-          window.location.href = "register.html";
-        }
+        btn.disabled = true;
+        btn.textContent = hasUser ? "Opening routes..." : "Opening login...";
+        window.location.href = hasUser ? "routes.html" : "register.html";
+      });
+    });
+
+    secondaryLinks.forEach(function (link) {
+      link.addEventListener("click", function () {
+        link.style.opacity = "0.7";
+        link.textContent = hasUser ? "Loading starred..." : "Opening...";
       });
     });
   });

@@ -271,7 +271,7 @@ def get_user_profile(user_id):
                 "route_name": route_name,
                 "direction": s.direction,
                 "crowd_level": s.crowd_level,
-                "seen_at": s.seen_at.isoformat() if s.seen_at else None
+                "seen_at": (s.seen_at.isoformat() + "Z") if s.seen_at else None
             })
 
         tier = "New Commuter"

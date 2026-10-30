@@ -15,9 +15,22 @@
     var confirmationResult = null; 
     var step = "phone"; 
 
-    window.recaptchaVerifier = new firebase.auth.RecaptchaVerifier("recaptcha-container", {
-      size: "invisible"
-    });
+    function ensureRecaptcha() {
+      if (!window.recaptchaVerifier && window.firebase && window.firebase.auth) {
+        try {
+          window.recaptchaVerifier = new firebase.auth.RecaptchaVerifier("recaptcha-container", {
+            size: "invisible"
+          });
+        } catch (e) {
+          console.warn("Could not instantiate reCAPTCHA:", e);
+        }
+      }
+      return window.recaptchaVerifier;
+    }
+
+    if (window.firebase && window.firebase.auth) {
+      ensureRecaptcha();
+    }
 
     phoneInput.addEventListener("input", function () {
       phoneInput.value = phoneInput.value.replace(/\D/g, "").slice(0, 10);
@@ -43,13 +56,39 @@
           return;
         }
 
+        if (!window.firebase || !window.firebase.auth) {
+          TransitPulseUI.showMessage(messageBox, "Network connection is slow. Waiting for authentication service...", "warning");
+          setSubmitting(true, "Connecting...");
+          var waited = 0;
+          var waitInterval = setInterval(async function () {
+            waited += 500;
+            if (window.firebase && window.firebase.auth) {
+              clearInterval(waitInterval);
+              ensureRecaptcha();
+              setSubmitting(false, "Send OTP");
+              form.dispatchEvent(new Event("submit"));
+            } else if (waited >= 8000) {
+              clearInterval(waitInterval);
+              setSubmitting(false, "Send OTP");
+              TransitPulseUI.showMessage(messageBox, "Slow network detected. Please check your connection and tap Send OTP again.", "error");
+            }
+          }, 500);
+          return;
+        }
+
+        var verifier = ensureRecaptcha();
+        if (!verifier) {
+          TransitPulseUI.showMessage(messageBox, "Authentication security check could not load. Please reload the page.", "error");
+          return;
+        }
+
         setSubmitting(true, "Sending OTP...");
 
         try {
           var fullPhoneNumber = "+91" + phone;
           confirmationResult = await firebase.auth().signInWithPhoneNumber(
             fullPhoneNumber,
-            window.recaptchaVerifier
+            verifier
           );
 
           step = "otp";
@@ -61,6 +100,10 @@
           otpInput.focus();
         } catch (error) {
           console.error("Firebase sendOtp error:", error);
+          if (window.recaptchaVerifier && window.recaptchaVerifier.clear) {
+            try { window.recaptchaVerifier.clear(); } catch (e) {}
+            window.recaptchaVerifier = null;
+          }
           TransitPulseUI.showMessage(messageBox, error.message || "Failed to send OTP.", "error");
           setSubmitting(false, "Send OTP");
         }

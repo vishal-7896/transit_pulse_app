@@ -50,7 +50,8 @@
     function formatRelativeDate(isoStr) {
       if (!isoStr) return "";
       try {
-        var date = new Date(isoStr);
+        var normalized = (isoStr.indexOf("Z") === -1 && isoStr.indexOf("+") === -1) ? isoStr + "Z" : isoStr;
+        var date = new Date(normalized);
         var now = new Date();
         var diffMs = now - date;
         var diffSec = Math.floor(diffMs / 1000);
