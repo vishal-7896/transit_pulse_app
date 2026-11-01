@@ -267,7 +267,8 @@ h3 { font-weight: 700; }
 
 #sighting-picker { padding-top: 14px; border-top: 2px dashed rgba(26, 35, 48, .28); }
 #sighting-picker .section-label { color: var(--ink-soft); margin-bottom: 0; }
-#sighting-picker .direction-button { color: var(--ink); border-color: rgba(26, 35, 48, .35); }
+#sighting-picker > div:not(.section-label) { flex-wrap: wrap; }
+#sighting-picker .direction-button { flex: 1 1 auto; min-width: max-content; padding: 12px 14px; color: var(--ink); border-color: rgba(26, 35, 48, .35); }
 #sighting-picker .direction-button:hover { border-color: var(--ink); }
 #sighting-picker .direction-button.is-active { background: var(--ink); border-color: var(--ink); color: var(--paper); }
 
@@ -493,6 +494,10 @@ h3 { font-weight: 700; }
 .thanks-badges-link:hover { background: #26334a; }
 
 /* ---------- motion + small screens ---------- */
+@media (max-width: 380px) {
+  .stop-details { margin-left: 0; padding: 16px 14px 14px; }
+  #sighting-picker .direction-button { padding: 12px 8px; }
+}
 @media (max-width: 360px) {
   .home-hero h1 { font-size: 64px; }
   .welcome-block h1 { font-size: 46px; }
