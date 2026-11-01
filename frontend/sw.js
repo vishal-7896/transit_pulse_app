@@ -1,4 +1,4 @@
-const CACHE_NAME = 'transitpulse-v6';
+const CACHE_NAME = 'transitpulse-v7';
 
 const ASSETS_TO_CACHE = [
   '/',
@@ -64,6 +64,7 @@ self.addEventListener('fetch', (event) => {
       url.pathname.startsWith('/sighting') ||
       url.pathname.startsWith('/favorites') ||
       url.pathname === '/profile' ||
+      url.pathname === '/feedback' ||
       (url.pathname === '/register' && event.request.method === 'POST') ||
       url.pathname.startsWith('/admin')) {
     return;
