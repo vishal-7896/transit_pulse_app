@@ -43,15 +43,20 @@ Public bus transit across suburban corridors (e.g., Hapur–Ghaziabad–Delhi) f
 │   ├── stops.html                # Sequential waypoints & live ETA board
 │   ├── register.html             # Phone OTP verification portal
 │   ├── starred.html              # Pinned commuter favorites
-│   ├── style.css                 # Dark theme design system
+│   ├── profile.html / profile.js # Commuter pass: stats, punch-card progress, badge stamps, sightings
+│   ├── badge-art.js              # SVG rubber-stamp art for every badge (profile + unlock popup)
+│   ├── style.css                 # Design system: slate + thermal-paper + one stamp-ink accent
+│   ├── fonts/                    # Self-hosted Barlow Condensed + Public Sans (OFL licensed)
+│   ├── icons/                    # App icon set: any + maskable PNGs, SVG, apple-touch, favicon
 │   ├── api.js                    # Async API client
 │   ├── sw.js                     # PWA Service Worker (Cache management)
 │   ├── manifest.webmanifest      # PWA App Manifest
-│   └── favicon.svg               # Vector brand icon
+│   └── favicon.svg               # Vector brand icon (same bus mark as icons/icon.svg)
 ├── admin_views.py                # Protected Flask-Admin dashboard views
 ├── alchemy_models.py             # SQLAlchemy 2.0 database models
 ├── app.py                        # Application entry point & RESTful API routes
 ├── auth_middleware.py            # Firebase token verification & anti-spam filter
+├── badges.py                     # Badge definitions + stats engine (derived from sightings)
 ├── db.py                         # SQLAlchemy session factory
 ├── eta.py                        # Segment-by-segment predictive ETA engine
 ├── requirements.txt              # Production dependency specifications

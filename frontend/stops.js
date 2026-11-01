@@ -797,7 +797,7 @@
         setButtonLoading(submitBtn, "Sending...");
 
         try {
-          await TransitPulseAPI.reportSighting({
+          var sightingResult = await TransitPulseAPI.reportSighting({
             route_stop_id: stop.route_stop_id,
             direction: selectedDirection,
             operator_id: selectedOperatorId,
@@ -807,7 +807,7 @@
           picker.remove();
           stopCountdown();
           startCooldown();
-          showThankYou();
+          showThankYou(sightingResult && sightingResult.new_badges);
           button.disabled = true;
           button.textContent = "Reported • wait 3 min";
           button.classList.add("is-success");
@@ -845,10 +845,12 @@
     }
 
     var thanksTimer = null;
-    function showThankYou() {
+    function showThankYou(newBadges) {
       var old = document.getElementById("thanks-toast");
       if (old) old.remove();
       window.clearTimeout(thanksTimer);
+
+      var unlocked = Array.isArray(newBadges) ? newBadges : [];
 
       var el = document.createElement("div");
       el.id = "thanks-toast";
@@ -860,10 +862,38 @@
           '<span class="thanks-spark"></span><span class="thanks-spark"></span><span class="thanks-spark"></span>' +
           '<span class="thanks-spark"></span><span class="thanks-spark"></span>' +
           '<div class="thanks-check"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 17 L13.5 23 L25 10"/></svg></div>' +
-          '<strong>Thank you!</strong>' +
+          '<strong>Thank you</strong>' +
           '<p>Your sighting just made someone\u2019s wait a little shorter.</p>' +
           '<small>Tap to close</small>' +
         '</div>';
+
+      // New badge(s): badge names come from our own server, but build with textContent anyway.
+      if (unlocked.length) {
+        var card = el.querySelector(".thanks-card");
+        var box = document.createElement("div");
+        box.className = "thanks-badges";
+        var heading = document.createElement("p");
+        heading.className = "thanks-badges-title";
+        heading.textContent = unlocked.length === 1 ? "New badge unlocked" : "New badges unlocked";
+        box.appendChild(heading);
+        unlocked.forEach(function (b, i) {
+          var row = document.createElement("div");
+          row.className = "thanks-badge-row";
+          if (window.TransitPulseBadgeArt) {
+            row.appendChild(window.TransitPulseBadgeArt.stamp(b.id, true, window.TransitPulseBadgeArt.tilt(i * 3)));
+          }
+          var text = document.createElement("span");
+          text.textContent = b.name;
+          row.appendChild(text);
+          box.appendChild(row);
+        });
+        var link = document.createElement("a");
+        link.className = "thanks-badges-link";
+        link.href = "profile.html";
+        link.textContent = "See my badges";
+        box.appendChild(link);
+        card.insertBefore(box, card.querySelector("small"));
+      }
       document.body.appendChild(el);
 
       function hide() {
@@ -873,7 +903,7 @@
       }
       el.querySelector(".thanks-card").addEventListener("click", hide);
       window.requestAnimationFrame(function () { el.classList.add("is-visible"); });
-      thanksTimer = window.setTimeout(hide, 3600);
+      thanksTimer = window.setTimeout(hide, unlocked.length ? 6500 : 3600);
     }
 
     function showInlineInstruction(message) {

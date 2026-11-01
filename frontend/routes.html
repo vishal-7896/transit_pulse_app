@@ -3,8 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#10152f">
-  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <meta name="theme-color" content="#0e141b">
+  <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <title>TransitPulse — Routes</title>
   <link rel="stylesheet" href="style.css">
   <!-- Firebase Web SDK -->
@@ -13,7 +15,7 @@
 <script src="firebase-config.js"></script>
 <!-- PWA Manifest & Meta Tags -->
 <link rel="manifest" href="/manifest.webmanifest">
-<meta name="theme-color" content="#10152f">
+<meta name="theme-color" content="#0e141b">
 
 <!-- Register Service Worker -->
 <script>
@@ -29,29 +31,26 @@
 <body class="page page-routes">
   <main class="mobile-shell">
     <header class="top-bar">
-      <div class="brand-mini">Transit<span>Pulse</span></div>
-      <a class="top-bar-profile-link" href="profile.html" aria-label="My Profile"><span class="top-avatar-dot" id="top-avatar-dot">👤</span> Profile</a>
+      <div class="brand-mini">TransitPulse</div>
+      <a class="top-bar-profile-link" href="profile.html" aria-label="My Profile"><span class="top-avatar-dot" id="top-avatar-dot">·</span> Profile</a>
     </header>
 
     <section class="welcome-block">
-      <p class="eyebrow">YOUR TRANSIT</p>
-      <h1 id="greeting">Hi there 👋</h1>
+      <h1 id="greeting">Hi there</h1>
       <p>Choose a route to see its stops and ETA.</p>
     </section>
 
     <section id="starred-section" class="starred-section is-hidden">
       <div class="route-heading-row">
-        <h2>★ Starred</h2>
+        <h2>Starred</h2>
         <p class="section-subtitle">Your saved stops</p>
       </div>
       <div id="starred-list" class="starred-list"></div>
     </section>
 
     <section class="route-heading-row">
-      <div>
-        <h2>Choose your route</h2>
-        <p id="route-count" class="section-subtitle">Loading routes...</p>
-      </div>
+      <h2>Choose your route</h2>
+      <p id="route-count" class="section-subtitle">Loading routes...</p>
     </section>
 
     <section id="routes-list" class="routes-list" aria-live="polite" aria-busy="true"></section>
@@ -65,7 +64,7 @@
     </div>
 
     <div id="routes-empty" class="state-card is-hidden">
-      <div class="state-icon" aria-hidden="true">◌</div>
+      <div class="state-icon" aria-hidden="true">○</div>
       <div>
         <strong>No routes available</strong>
         <p>There are no routes in the backend right now.</p>

@@ -43,14 +43,8 @@
         body: { user_id: userId, route_stop_id: routeStopId }
       });
     },
-    getUserProfile: function (userId) {
-      return request("/user/" + encodeURIComponent(String(userId)) + "/profile", { method: "GET" });
-    },
-    updateUserName: function (userId, name) {
-      return request("/user/" + encodeURIComponent(String(userId)) + "/update-name", {
-        method: "POST",
-        body: { name: name }
-      });
+    getProfile: function () {
+      return request("/profile", { timeoutMs: 15000 });
     }
   };
 

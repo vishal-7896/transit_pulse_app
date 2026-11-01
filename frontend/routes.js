@@ -19,19 +19,19 @@
     }
 
     var userName = TransitPulseStorage.getUserName() || "there";
-    greeting.textContent = "Hi, " + userName + " 👋";
+    greeting.textContent = "Hi, " + userName;
     if (topAvatarDot && userName) {
       topAvatarDot.textContent = userName.charAt(0).toUpperCase();
     }
 
-    if (userId && window.TransitPulseAPI && window.TransitPulseAPI.getUserProfile) {
-      window.TransitPulseAPI.getUserProfile(userId).then(function (profile) {
-        if (profile && profile.name && profile.name !== "Commuter") {
-          greeting.textContent = "Hi, " + profile.name + " 👋";
-          TransitPulseStorage.saveUser(userId, profile.name);
-          if (topAvatarDot) {
-            topAvatarDot.textContent = profile.name.charAt(0).toUpperCase();
-          }
+    if (window.TransitPulseAPI && window.TransitPulseAPI.getProfile) {
+      // Needs the login token; if it isn't ready yet this just keeps the cached name.
+      window.TransitPulseAPI.getProfile().then(function (data) {
+        var name = data && data.user && data.user.name;
+        if (name && name !== "Commuter") {
+          greeting.textContent = "Hi, " + name;
+          TransitPulseStorage.saveUser(userId, name);
+          if (topAvatarDot) topAvatarDot.textContent = name.charAt(0).toUpperCase();
         }
       }).catch(function () {});
     }
@@ -102,13 +102,13 @@
       }
 
       validRoutes.forEach(function (route) {
-        routesList.appendChild(createRouteCard(route));
+        routesList.appendChild(createRouteCard(route, routesList.children.length + 1));
       });
 
       routeCount.textContent = validRoutes.length + (validRoutes.length === 1 ? " route" : " routes");
     }
 
-    function createRouteCard(route) {
+    function createRouteCard(route, number) {
       var link = document.createElement("a");
       link.className = "route-card";
 
@@ -122,7 +122,7 @@
       var routeIcon = document.createElement("div");
       routeIcon.className = "route-card-icon";
       routeIcon.setAttribute("aria-hidden", "true");
-      routeIcon.textContent = "↗";
+      routeIcon.textContent = String(number);
 
       var content = document.createElement("div");
       content.className = "route-card-content";
@@ -138,7 +138,7 @@
 
       var arrow = document.createElement("span");
       arrow.className = "route-card-arrow";
-      arrow.textContent = "→";
+      arrow.textContent = "›";
       arrow.setAttribute("aria-hidden", "true");
 
       link.appendChild(routeIcon);

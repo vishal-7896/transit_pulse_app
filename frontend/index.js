@@ -5,6 +5,11 @@
     var hasUser = Boolean(window.TransitPulseStorage && window.TransitPulseStorage.hasUser());
     var primaryButtons = document.querySelectorAll(".js-primary-cta");
     var secondaryLinks = document.querySelectorAll(".js-secondary-cta");
+    var topLink = document.querySelector(".js-top-link");
+    if (topLink) {
+      topLink.textContent = hasUser ? "Open routes" : "Log in";
+      topLink.setAttribute("href", hasUser ? "routes.html" : "register.html");
+    }
 
     if (hasUser) {
       primaryButtons.forEach(function (btn) { btn.textContent = "Open routes"; });
