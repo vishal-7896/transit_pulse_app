@@ -45,6 +45,13 @@
     },
     getProfile: function () {
       return request("/profile", { timeoutMs: 15000 });
+    },
+    sendFeedback: function (payload) {
+      return request("/feedback", {
+        method: "POST",
+        body: payload,
+        timeoutMs: 12000
+      });
     }
   };
 

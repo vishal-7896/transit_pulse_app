@@ -5,7 +5,6 @@
 
   function $(id) { return document.getElementById(id); }
 
-  // Everything user-supplied goes in via textContent, never innerHTML.
   function el(tag, className, text) {
     var node = document.createElement(tag);
     if (className) node.className = className;
@@ -55,13 +54,9 @@
     });
 
     retryBtn.addEventListener("click", function () {
-      // If the sign-in library never loaded, only a page reload can recover.
       if (window.firebase && firebase.auth) load(); else window.location.reload();
     });
 
-    // Firebase restores the session asynchronously after a page load, and its script
-    // can arrive late on a slow network. Wait for it (up to ~10s) before calling the API,
-    // otherwise the request would go out without a login token.
     function whenFirebaseReady(callback) {
       var waited = 0;
       (function check() {
@@ -248,7 +243,6 @@
       b.appendChild(el("small", null, "/" + data.badges.length));
     }
 
-    // One punched hole per step towards the next badge (capped at 25 holes).
     function buildHoles(progress, target, mini) {
       var n = Math.min(target, 25);
       var on = Math.round((progress / target) * n);
@@ -299,7 +293,6 @@
       grid.innerHTML = "";
       $("badge-count").textContent = data.badges_earned + " of " + data.badges.length + " collected";
 
-      // Earned first (newest first), then locked in their natural order.
       var earned = data.badges.filter(function (b) { return b.earned; }).sort(function (a, b) {
         return (b.earned_at || "").localeCompare(a.earned_at || "");
       });
@@ -319,7 +312,6 @@
       });
     }
 
-    // ---- badge detail slip ----
     var sheetOpener = null;
     function openBadgeSheet(b) {
       var sheet = $("badge-sheet");
@@ -416,5 +408,35 @@
       });
       applyVisibility();
     }
+
+    var feedbackForm = $("feedback-form");
+    if (feedbackForm) {
+      feedbackForm.addEventListener("submit", async function (e) {
+        e.preventDefault();
+        var categoryEl = $("feedback-category");
+        var messageEl = $("feedback-message");
+        var submitBtn = $("feedback-submit-btn");
+        var feedbackMsg = $("feedback-msg-box");
+        var category = categoryEl ? categoryEl.value : "General";
+        var message = messageEl ? messageEl.value.trim() : "";
+        if (!message) return;
+        submitBtn.disabled = true;
+        TransitPulseUI.clearMessage(feedbackMsg);
+        try {
+          await TransitPulseAPI.sendFeedback({
+            category: category,
+            message: message,
+            user_id: TransitPulseStorage.getUserId()
+          });
+          messageEl.value = "";
+          TransitPulseUI.showMessage(feedbackMsg, "Thank you! Your feedback has been received.", "success");
+        } catch (err) {
+          TransitPulseUI.showMessage(feedbackMsg, err && err.message ? err.message : "Failed to send feedback.", "error");
+        } finally {
+          submitBtn.disabled = false;
+        }
+      });
+    }
+
   });
 })();

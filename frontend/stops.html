@@ -2,6 +2,15 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <script src="https://browser.sentry-cdn.com/8.38.0/bundle.min.js" crossorigin="anonymous"></script>
+  <script>
+    if (window.Sentry) {
+      Sentry.init({
+        dsn: "https://5900da1832d4c247e5f044781ce4d36b@o4512355430432768.ingest.us.sentry.io/4512355513794560",
+        tracesSampleRate: 0.1
+      });
+    }
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#0e141b">
   <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
@@ -9,15 +18,15 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <title>TransitPulse — Stops</title>
   <link rel="stylesheet" href="style.css">
-  <!-- Firebase Web SDK -->
+
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="firebase-config.js"></script>
-<!-- PWA Manifest & Meta Tags -->
+
 <link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#0e141b">
 
-<!-- Register Service Worker -->
+
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
@@ -74,6 +83,10 @@
       <div id="stops-error" class="message-box message-error is-hidden" role="alert"></div>
       <button id="retry-stops-btn" class="wide-button wide-button-secondary is-hidden" type="button">Try again</button>
     </section>
+
+    <div class="feedback-link-wrap">
+      <a class="subtle-feedback-link" href="profile.html#feedback-form">Notice a wrong ETA or issue? Send feedback in Profile →</a>
+    </div>
   </main>
 
   <script src="storage.js"></script>

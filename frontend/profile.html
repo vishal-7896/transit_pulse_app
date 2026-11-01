@@ -2,6 +2,15 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <script src="https://browser.sentry-cdn.com/8.38.0/bundle.min.js" crossorigin="anonymous"></script>
+  <script>
+    if (window.Sentry) {
+      Sentry.init({
+        dsn: "https://5900da1832d4c247e5f044781ce4d36b@o4512355430432768.ingest.us.sentry.io/4512355513794560",
+        tracesSampleRate: 0.1
+      });
+    }
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#0e141b">
   <title>TransitPulse — Profile</title>
@@ -9,14 +18,14 @@
   <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="stylesheet" href="style.css">
-  <!-- Firebase Web SDK (needed so API calls carry the login token) -->
+
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
   <script src="firebase-config.js"></script>
-  <!-- PWA Manifest & Meta Tags -->
+
   <link rel="manifest" href="/manifest.webmanifest">
 
-  <!-- Register Service Worker -->
+
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
@@ -102,6 +111,26 @@
           </div>
         </div>
         <a class="wide-button wide-button-primary link-button" href="routes.html">Share a sighting</a>
+      </section>
+
+      <section class="profile-section feedback-section" aria-label="Support & Feedback">
+        <div class="feedback-card">
+          <div class="feedback-info">
+            <strong>Have feedback or route issues?</strong>
+            <p>Report a problem or suggest an improvement directly to the admin.</p>
+          </div>
+          <form id="feedback-form" class="feedback-form">
+            <select id="feedback-category" class="feedback-select" aria-label="Feedback category">
+              <option value="Wrong ETA">Wrong ETA / Timing</option>
+              <option value="Missing Stop">Missing Stop or Route</option>
+              <option value="Bug / Error">App Glitch or Bug</option>
+              <option value="General">General Suggestion</option>
+            </select>
+            <textarea id="feedback-message" class="feedback-textarea" rows="3" placeholder="Tell us what happened..." maxlength="800" required></textarea>
+            <button type="submit" id="feedback-submit-btn" class="wide-button wide-button-secondary feedback-btn">Send Feedback</button>
+            <div id="feedback-msg-box" class="message-box is-hidden" role="status"></div>
+          </form>
+        </div>
       </section>
     </div>
   </main>

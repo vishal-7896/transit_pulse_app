@@ -1,20 +1,31 @@
 import os
+try:
+    import sentry_sdk
+except ImportError:
+    sentry_sdk = None
 from flask import Flask, request, jsonify, g, abort, send_from_directory
 from flask_cors import CORS
 from sqlalchemy import select, func
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from db import get_session
-from alchemy_models import Route, RouteStop, Sighting, User, Operator, UserFavorite, Stop
+from alchemy_models import Route, RouteStop, Sighting, User, Operator, UserFavorite, Stop, PredictionLog, Feedback
 import badges
 from eta import calculate_eta
 from auth_middleware import require_auth
 from admin_views import init_admin
 
 
-app = Flask(__name__)
-
 load_dotenv()
+
+sentry_dsn = os.getenv("SENTRY_DSN", "https://5900da1832d4c247e5f044781ce4d36b@o4512355430432768.ingest.us.sentry.io/4512355513794560")
+if sentry_dsn and sentry_sdk:
+    sentry_sdk.init(
+        dsn=sentry_dsn,
+        traces_sample_rate=0.1
+    )
+
+app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY")
 if not app.secret_key:
     raise RuntimeError("SECRET_KEY is not set. Add it to your .env file")
@@ -189,7 +200,11 @@ def post_sighting():
         if recent:
             return jsonify({"error": "too many requests"}), 429
 
-        # Badges before this sighting, so we can tell which ones it unlocks.
+        ist_now = datetime.utcnow() + timedelta(hours=5, minutes=30)
+        if 1 <= ist_now.hour < 4:
+            return jsonify({"error": "Sightings are paused between 1:00 AM and 4:00 AM IST."}), 400
+
+        
         try:
             _, badges_before = badges.evaluate(session, user_id)
             earned_before = badges.earned_ids(badges_before)
@@ -208,9 +223,26 @@ def post_sighting():
 
         update_adaptive_travel_time(session, current_rs, sighting)
 
+        try:
+            window_start = datetime.utcnow() - timedelta(minutes=60)
+            pending_logs = session.scalars(
+                select(PredictionLog).where(
+                    PredictionLog.route_stop_id == route_stop_id,
+                    PredictionLog.direction == direction,
+                    PredictionLog.actual_arrival_at.is_(None),
+                    PredictionLog.predicted_at >= window_start
+                )
+            ).all()
+            for pl in pending_logs:
+                pl.actual_arrival_at = sighting.seen_at or datetime.utcnow()
+                actual_diff = (pl.actual_arrival_at - pl.predicted_at).total_seconds() / 60.0
+                pl.error_minutes = round(abs(pl.predicted_eta_minutes - actual_diff), 2)
+        except Exception as e:
+            print(f"Prediction log matching notice: {e}")
+
         session.commit()
 
-        # The sighting is saved; a badge problem must never make it look failed.
+        
         new_badges = []
         if earned_before is not None:
             try:
@@ -226,8 +258,7 @@ def post_sighting():
 @app.route('/profile', methods=['GET'])
 @require_auth
 def get_profile():
-    """The signed-in user's own profile. The user comes from the verified token,
-    never from the URL, so nobody can read another user's data."""
+
     user_id = g.current_user['id']
 
     with get_session() as session:
@@ -259,7 +290,68 @@ def get_profile():
 @app.route('/eta/<int:route_stop_id>', methods=['GET'])
 def get_eta(route_stop_id):
     direction = request.args.get('direction', 'forward')
-    return calculate_eta(route_stop_id, direction)
+    res = calculate_eta(route_stop_id, direction)
+    if isinstance(res, dict) and "eta minutes" in res:
+        try:
+            with get_session() as session:
+                log_entry = PredictionLog(
+                    route_stop_id=route_stop_id,
+                    direction=direction,
+                    predicted_eta_minutes=float(res.get("eta minutes", 15)),
+                    status=str(res.get("status", "unknown"))
+                )
+                session.add(log_entry)
+                session.commit()
+        except Exception as e:
+            print(f"Prediction logging notice: {e}")
+    return res
+
+
+@app.route('/feedback', methods=['POST'])
+def submit_feedback():
+    data = request.get_json() or {}
+    msg = (data.get('message') or '').strip()
+    category = (data.get('category') or 'General').strip()
+    user_id = data.get('user_id')
+    if not msg:
+        return jsonify({"error": "Message is required"}), 400
+    with get_session() as session:
+        fb = Feedback(
+            user_id=int(user_id) if user_id and str(user_id).isdigit() else None,
+            category=category[:50],
+            message=msg[:1000]
+        )
+        session.add(fb)
+        session.commit()
+        return jsonify({"status": "ok", "message": "Thank you! Your feedback has been received."})
+
+
+@app.route('/analytics/accuracy', methods=['GET'])
+def get_accuracy_metrics():
+    with get_session() as session:
+        evaluated = session.scalars(
+            select(PredictionLog).where(PredictionLog.error_minutes.is_not(None))
+        ).all()
+        if not evaluated:
+            return jsonify({
+                "samples_count": 0,
+                "mae_minutes": None,
+                "mape_percent": None,
+                "status": "Collecting live arrival data"
+            })
+        errors = [p.error_minutes for p in evaluated]
+        mae = round(sum(errors) / len(errors), 2)
+        mape_list = []
+        for p in evaluated:
+            if p.predicted_eta_minutes and p.predicted_eta_minutes > 0:
+                mape_list.append(abs(p.error_minutes / p.predicted_eta_minutes) * 100.0)
+        mape = round(sum(mape_list) / len(mape_list), 1) if mape_list else None
+        return jsonify({
+            "samples_count": len(evaluated),
+            "mae_minutes": mae,
+            "mape_percent": mape,
+            "accuracy_percent": round(max(0.0, 100.0 - mape), 1) if mape is not None else None
+        })
 
 
 @app.route('/favorites', methods=['GET'])

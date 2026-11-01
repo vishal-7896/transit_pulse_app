@@ -6,3 +6,4 @@ psycopg2-binary
 python-dotenv
 firebase-admin
 gunicorn
+sentry-sdk[flask]>=2.0.0

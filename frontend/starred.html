@@ -2,6 +2,15 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <script src="https://browser.sentry-cdn.com/8.38.0/bundle.min.js" crossorigin="anonymous"></script>
+  <script>
+    if (window.Sentry) {
+      Sentry.init({
+        dsn: "https://5900da1832d4c247e5f044781ce4d36b@o4512355430432768.ingest.us.sentry.io/4512355513794560",
+        tracesSampleRate: 0.1
+      });
+    }
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#0e141b">
   <title>TransitPulse — Starred</title>
@@ -9,11 +18,9 @@
   <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="stylesheet" href="style.css">
-  <!-- PWA Manifest & Meta Tags -->
-<link rel="manifest" href="/manifest.webmanifest">
+  <link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#0e141b">
 
-<!-- Register Service Worker -->
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
@@ -61,7 +68,6 @@
         var n = TransitPulseStarredUI.render(list);
         empty.classList.toggle("is-hidden", n > 0);
       }
-      // Re-render after unstarring from this page.
       list.addEventListener("click", function () { window.setTimeout(refresh, 0); });
       refresh();
     });

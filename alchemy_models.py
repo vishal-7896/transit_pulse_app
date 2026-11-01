@@ -81,6 +81,27 @@ class UserFavorite(Base):
     user: Mapped["User"] = relationship(back_populates="favorites")
     route_stop: Mapped["RouteStop"] = relationship()
 
+class PredictionLog(Base):
+    __tablename__ = "prediction_log"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    route_stop_id: Mapped[int] = mapped_column(ForeignKey("route_stop.id"))
+    direction: Mapped[str] = mapped_column(String)
+    predicted_eta_minutes: Mapped[float] = mapped_column(Float)
+    status: Mapped[str] = mapped_column(String)
+    predicted_at: Mapped[datetime] = mapped_column(default=func.now())
+    actual_arrival_at: Mapped[Optional[datetime]] = mapped_column(default=None)
+    error_minutes: Mapped[Optional[float]] = mapped_column(default=None)
+
+class Feedback(Base):
+    __tablename__ = "feedback"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("user.id"), default=None)
+    category: Mapped[str] = mapped_column(String)
+    message: Mapped[str] = mapped_column(String)
+    created_at: Mapped[datetime] = mapped_column(default=func.now())
+
 class Sighting(Base):
     __tablename__ = "sighting"
 

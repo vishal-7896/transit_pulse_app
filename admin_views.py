@@ -1,6 +1,5 @@
 from flask import redirect, url_for, request, flash, session as flask_session
 from flask_admin import Admin, AdminIndexView, expose
-# Fix for Flask-Admin 2.2.1 import bug
 try:
     import flask_admin.contrib.sqla._types as _fa_types
     if not hasattr(_fa_types, 'T_SESSION'):
@@ -12,7 +11,7 @@ from flask_admin.contrib.sqla import ModelView
 from sqlalchemy.orm import Session
 from sqlalchemy.orm import scoped_session, sessionmaker
 
-from alchemy_models import engine, Route, Stop, RouteStop, Operator, User, Sighting
+from alchemy_models import engine, Route, Stop, RouteStop, Operator, User, Sighting, Feedback
 
 import os
 import hmac
@@ -126,7 +125,6 @@ class StopAdmin(SecureModelView):
     column_list = ["id", "name", "landmark", "routes_display"]
     column_searchable_list = ["name", "landmark"]
 
-    # Custom column that shows which routes this stop belongs to
     column_formatters = {
         "routes_display": lambda v, c, m, p: ", ".join(
             rs.route.name for rs in m.route_stops
@@ -140,7 +138,6 @@ def init_admin(app):
     admin = Admin(
         app,
         name="TransitPulse Admin",
-        # template_mode="bootstrap4",
         index_view=SecureAdminIndexView()
     )
     @app.teardown_appcontext
@@ -155,5 +152,6 @@ def init_admin(app):
     admin.add_view(SecureModelView(RouteStop, db_session, name="Route Stops"))
     admin.add_view(SecureModelView(User, db_session, name="Users"))
     admin.add_view(SightingAdmin(Sighting, db_session, name="Sightings"))
+    admin.add_view(SecureModelView(Feedback, db_session, name="Feedback"))
 
     return admin
