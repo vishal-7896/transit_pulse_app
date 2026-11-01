@@ -25,7 +25,6 @@
     }
 
     if (window.TransitPulseAPI && window.TransitPulseAPI.getProfile) {
-      // Needs the login token; if it isn't ready yet this just keeps the cached name.
       window.TransitPulseAPI.getProfile().then(function (data) {
         var name = data && data.user && data.user.name;
         if (name && name !== "Commuter") {
@@ -168,5 +167,35 @@
       }
       return error && error.message ? error.message : "Could not load routes.";
     }
+
+    var feedbackForm = document.getElementById("feedback-form");
+    if (feedbackForm) {
+      feedbackForm.addEventListener("submit", async function (e) {
+        e.preventDefault();
+        var categoryEl = document.getElementById("feedback-category");
+        var messageEl = document.getElementById("feedback-message");
+        var submitBtn = document.getElementById("feedback-submit-btn");
+        var feedbackMsg = document.getElementById("feedback-msg-box");
+        var category = categoryEl ? categoryEl.value : "General";
+        var message = messageEl ? messageEl.value.trim() : "";
+        if (!message) return;
+        submitBtn.disabled = true;
+        TransitPulseUI.clearMessage(feedbackMsg);
+        try {
+          await TransitPulseAPI.sendFeedback({
+            category: category,
+            message: message,
+            user_id: TransitPulseStorage.getUserId()
+          });
+          messageEl.value = "";
+          TransitPulseUI.showMessage(feedbackMsg, "Thank you! Your feedback has been received.", "success");
+        } catch (err) {
+          TransitPulseUI.showMessage(feedbackMsg, err && err.message ? err.message : "Failed to send feedback.", "error");
+        } finally {
+          submitBtn.disabled = false;
+        }
+      });
+    }
+
   });
 })();

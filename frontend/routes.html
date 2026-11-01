@@ -79,6 +79,35 @@
 
     <div id="routes-error" class="message-box message-error is-hidden" role="alert"></div>
     <button id="retry-routes-btn" class="wide-button wide-button-secondary is-hidden" type="button">Try again</button>
+
+    <section class="feedback-section" aria-label="Support and Feedback">
+      <div class="route-heading-row">
+        <h2>Feedback & Reports</h2>
+      </div>
+      <div class="feedback-card">
+        <p class="feedback-desc">Notice incorrect bus timings, a missing stop, or an app glitch? Let the admin know directly.</p>
+        <form id="feedback-form" class="feedback-form">
+          <div class="feedback-field">
+            <label for="feedback-category" class="feedback-label">Category</label>
+            <div class="select-wrapper">
+              <select id="feedback-category" class="feedback-select" aria-label="Feedback category">
+                <option value="Wrong ETA">Wrong ETA / Bus Timing</option>
+                <option value="Missing Stop">Missing Stop or Route</option>
+                <option value="Bug / Error">App Glitch or Bug</option>
+                <option value="General">General Suggestion</option>
+              </select>
+              <span class="select-arrow" aria-hidden="true">▾</span>
+            </div>
+          </div>
+          <div class="feedback-field">
+            <label for="feedback-message" class="feedback-label">Your message</label>
+            <textarea id="feedback-message" class="feedback-textarea" rows="3" placeholder="Tell us what happened (e.g. Route 4 bus arrived 10 min earlier than shown)..." maxlength="800" required></textarea>
+          </div>
+          <button type="submit" id="feedback-submit-btn" class="wide-button wide-button-secondary feedback-btn">Send Feedback</button>
+          <div id="feedback-msg-box" class="message-box is-hidden" role="status"></div>
+        </form>
+      </div>
+    </section>
   </main>
 
   <script src="storage.js"></script>
