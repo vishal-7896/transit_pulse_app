@@ -109,7 +109,7 @@
           reportButtons.forEach(function (btn) {
             btn.disabled = false;
             btn.textContent = "I see the bus";
-            btn.classList.remove("is-warning", "is-success");
+            btn.classList.remove("is-warning", "is-success", "is-cooldown");
           });
           return;
         }
@@ -118,7 +118,7 @@
         reportButtons.forEach(function (btn) {
           btn.disabled = true;
           btn.textContent = "Reported • wait " + left + "s";
-          btn.classList.add("is-warning");
+          btn.classList.add("is-cooldown");
         });
       }
 
@@ -767,11 +767,13 @@
       var crowdRow = document.createElement("div");
       crowdRow.style.cssText = "display:flex;gap:8px;";
 
+      // Stored values stay empty/moderate/packed (DB constraint); only the wording riders see changes.
+      var CROWD_LABELS = { empty: "Empty seats", moderate: "Standing only", packed: "Fully packed" };
       ["empty", "moderate", "packed"].forEach(function (level) {
         var btn = document.createElement("button");
         btn.type = "button";
         btn.className = "direction-button";
-        btn.textContent = level.charAt(0).toUpperCase() + level.slice(1);
+        btn.textContent = CROWD_LABELS[level];
         btn.addEventListener("click", function () {
           crowdRow.querySelectorAll("button").forEach(function (b) {
             b.classList.remove("is-active");
@@ -810,7 +812,7 @@
           showThankYou(sightingResult && sightingResult.new_badges);
           button.disabled = true;
           button.textContent = "Reported • wait 3 min";
-          button.classList.add("is-success");
+          button.classList.add("is-cooldown");
           etaValue.textContent = "—";
           etaMeta.className = "eta-meta eta-meta-success";
           etaMeta.textContent = "Sighting shared. Tap Check ETA to get the latest.";
@@ -818,7 +820,7 @@
           console.error("Sighting error:", error);
 
           if (error && error.status === 429) {
-            button.classList.add("is-warning");
+            button.classList.add("is-cooldown");
             button.disabled = true;
             etaMeta.className = "eta-meta eta-meta-warning";
             etaMeta.textContent = "You've recently reported a sighting. Please wait.";
@@ -940,18 +942,20 @@
       }
     }
 
+    var NETWORK_MESSAGE = "Can't reach TransitPulse right now. Check your internet and tap again. If the app was idle, the first try can take a minute.";
+
     function getDisplayValue(value, fallback) {
       if (value === undefined || value === null || String(value).trim() === "") return fallback;
       return String(value);
     }
 
     function getStopsError(error) {
-      if (error && error.isNetworkError) return "Could not connect to the TransitPulse server. Make sure Flask is running.";
+      if (error && error.isNetworkError) return NETWORK_MESSAGE;
       return error && error.message ? error.message : "Could not load stops.";
     }
 
     function getEtaError(error) {
-      if (error && error.isNetworkError) return "Could not reach the server. Please check that Flask is running.";
+      if (error && error.isNetworkError) return NETWORK_MESSAGE;
       return error && error.message ? error.message : "Could not load the ETA.";
     }
 

@@ -227,6 +227,7 @@ h3 { font-weight: 700; }
 .stop-details .wide-button-secondary:hover:not(:disabled) { background: rgba(26, 35, 48, .08); border-color: var(--ink); }
 .stop-details .wide-button.is-success { background: #1f6b3a; border-color: #1f6b3a; color: #fff; }
 .stop-details .wide-button.is-warning { border-color: #8a5a00; color: #8a5a00; }
+.stop-details .wide-button.is-cooldown:disabled { opacity: 1; background: rgba(26, 35, 48, .07); border-color: rgba(26, 35, 48, .3); color: var(--ink); font-variant-numeric: tabular-nums; }
 #sighting-picker { padding-top: 14px; border-top: 2px dashed rgba(26, 35, 48, .28); }
 #sighting-picker .section-label { color: var(--ink-soft); margin-bottom: 0; }
 #sighting-picker > div:not(.section-label) { flex-wrap: wrap; }

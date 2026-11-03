@@ -1,4 +1,4 @@
-const CACHE_NAME = 'transitpulse-v9';
+const CACHE_NAME = 'transitpulse-v10';
 
 const ASSETS_TO_CACHE = [
   '/',

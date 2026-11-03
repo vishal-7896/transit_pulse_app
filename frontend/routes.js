@@ -163,7 +163,7 @@
 
     function getRouteError(error) {
       if (error && error.isNetworkError) {
-        return "Could not connect to the TransitPulse server. Make sure Flask is running.";
+        return "Can't reach TransitPulse right now. Check your internet and tap again. If the app was idle, the first try can take a minute.";
       }
       return error && error.message ? error.message : "Could not load routes.";
     }

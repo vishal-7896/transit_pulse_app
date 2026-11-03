@@ -398,7 +398,7 @@
         sub.appendChild(document.createTextNode(parts.join(", ")));
         if (s.crowd_level) {
           if (parts.length) sub.appendChild(document.createElement("br"));
-          sub.appendChild(el("span", "crowd-text-" + s.crowd_level, s.crowd_level.charAt(0).toUpperCase() + s.crowd_level.slice(1)));
+          sub.appendChild(el("span", "crowd-text-" + s.crowd_level, ({ empty: "Empty seats", moderate: "Standing only", packed: "Fully packed" })[s.crowd_level] || s.crowd_level));
         }
         main.appendChild(sub);
 

@@ -25,10 +25,11 @@ def calculate_eta(route_stop_id, direction='forward'):
 
         travel_times = {rs.stop_order: (rs.avg_travel_seconds or 0) for rs in route_stops}
 
-        if direction == 'return':
-            order_filter = RouteStop.stop_order >= user_stop_order
-        else:
-            order_filter = RouteStop.stop_order <= user_stop_order
+        # Every fresh sighting in this direction is fetched, including ones already PAST this stop.
+        # A rider's newest report decides where "their" bus is; if that is beyond this stop, the bus
+        # has gone by, and their older report from before the stop must not keep counting.
+        def is_beyond(order):
+            return order < user_stop_order if direction == 'return' else order > user_stop_order
 
         stmt = (
             select(RouteStop.stop_order, Stop.name, Sighting.seen_at, Sighting.user_id)
@@ -36,8 +37,7 @@ def calculate_eta(route_stop_id, direction='forward'):
             .join(Stop, RouteStop.stop_id == Stop.id)
             .where(
                 RouteStop.route_id == route_id,
-                Sighting.direction == direction,
-                order_filter
+                Sighting.direction == direction
             )
             .order_by(Sighting.seen_at.desc())
         )
@@ -78,6 +78,10 @@ def calculate_eta(route_stop_id, direction='forward'):
 
             fresh_sightings_count += 1
             elapsed = age.total_seconds()
+
+            if is_beyond(sighting_stop_order):
+                passed_buses.append(-1)
+                continue
 
             min_order = min(sighting_stop_order, user_stop_order)
             max_order = max(sighting_stop_order, user_stop_order)

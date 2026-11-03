@@ -118,7 +118,7 @@ class SightingAdmin(SecureModelView):
     column_filters = ["direction", "crowd_level", "seen_at"]
     form_choices = {
         "direction": [("forward", "Forward"), ("return", "Return")],
-        "crowd_level": [("empty", "Empty"), ("moderate", "Moderate"), ("packed", "Packed")]
+           "crowd_level": [("empty", "Empty seats"), ("moderate", "Standing only"), ("packed", "Fully packed")]
     }
     can_create = False
 class StopAdmin(SecureModelView):
