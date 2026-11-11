@@ -122,6 +122,14 @@ class Sighting(Base):
     user: Mapped["User"] = relationship(back_populates="sightings")
     operator: Mapped[Optional["Operator"]] = relationship()
 
+class PosterScan(Base):
+    __tablename__ = "poster_scan"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    src: Mapped[str] = mapped_column(String, default="poster")
+    scanned_at: Mapped[datetime] = mapped_column(default=func.now())
+    user_agent: Mapped[Optional[str]] = mapped_column(String)
+
 import os
 from dotenv import load_dotenv
 

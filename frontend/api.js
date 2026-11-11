@@ -52,6 +52,9 @@
         body: payload,
         timeoutMs: 12000
       });
+    },
+    logScan: function (src) {
+      return request("/analytics/scan?src=" + encodeURIComponent(src || "poster"), { timeoutMs: 6000 });
     }
   };
 
@@ -63,7 +66,6 @@
       }
     };
 
-    // Render's free tier sleeps when idle and takes up to ~50s to wake, so 15s gave up too early.
     var timeoutMs = (options && options.timeoutMs) || 45000;
     var controller = typeof AbortController !== "undefined" ? new AbortController() : null;
     var timeoutId = null;

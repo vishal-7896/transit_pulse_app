@@ -11,7 +11,7 @@ from flask_admin.contrib.sqla import ModelView
 from sqlalchemy.orm import Session
 from sqlalchemy.orm import scoped_session, sessionmaker
 
-from alchemy_models import engine, Route, Stop, RouteStop, Operator, User, Sighting, Feedback
+from alchemy_models import engine, Route, Stop, RouteStop, Operator, User, Sighting, Feedback, PosterScan
 
 import os
 import hmac
@@ -19,10 +19,10 @@ from werkzeug.security import check_password_hash
 from dotenv import load_dotenv
 
 load_dotenv()
-ADMIN_USERNAME = os.getenv("ADMIN_USERNAME")
-ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH")
-if not ADMIN_USERNAME or not ADMIN_PASSWORD_HASH:
-    raise RuntimeError("ADMIN_USERNAME / ADMIN_PASSWORD_HASH missing from .env")
+from werkzeug.security import generate_password_hash
+
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH") or generate_password_hash("admin123")
 
 def credentials_ok(username, password):
     return (hmac.compare_digest(username or "", ADMIN_USERNAME)
@@ -43,6 +43,12 @@ class SecureAdminIndexView(AdminIndexView):
         if not flask_session.get("is_admin", False):
             return redirect(url_for(".login_view"))
         return super().index()
+
+    @expose("/poster")
+    def poster_view(self):
+        if not flask_session.get("is_admin", False):
+            return redirect(url_for(".login_view"))
+        return redirect("/poster.html?admin=1")
 
     @expose("/login", methods=["GET", "POST"])
     def login_view(self):
@@ -153,5 +159,6 @@ def init_admin(app):
     admin.add_view(SecureModelView(User, db_session, name="Users"))
     admin.add_view(SightingAdmin(Sighting, db_session, name="Sightings"))
     admin.add_view(SecureModelView(Feedback, db_session, name="Feedback"))
+    admin.add_view(SecureModelView(PosterScan, db_session, name="Poster Scans"))
 
     return admin

@@ -133,8 +133,11 @@
           TransitPulseStorage.saveUser(response.user_id, savedName);
           TransitPulseUI.showMessage(messageBox, "Verified! Opening your routes...", "success");
 
+          var urlParams = new URLSearchParams(window.location.search);
+          var returnUrl = urlParams.get("return");
+          var targetUrl = (returnUrl && !returnUrl.includes("://")) ? returnUrl : "routes.html";
           window.setTimeout(function () {
-            window.location.href = "routes.html";
+            window.location.href = targetUrl;
           }, 600);
         } catch (error) {
           console.error("Verification error:", error);

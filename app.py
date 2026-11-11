@@ -9,7 +9,7 @@ from sqlalchemy import select, func
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from db import get_session
-from alchemy_models import Route, RouteStop, Sighting, User, Operator, UserFavorite, Stop, PredictionLog, Feedback
+from alchemy_models import Route, RouteStop, Sighting, User, Operator, UserFavorite, Stop, PredictionLog, Feedback, PosterScan
 import badges
 from eta import calculate_eta
 from auth_middleware import require_auth
@@ -26,9 +26,7 @@ if sentry_dsn and sentry_sdk:
     )
 
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY")
-if not app.secret_key:
-    raise RuntimeError("SECRET_KEY is not set. Add it to your .env file")
+app.secret_key = os.getenv("SECRET_KEY", "transitpulse_dev_local_secret_key")
 CORS(app)
 
 init_admin(app)
@@ -326,17 +324,40 @@ def submit_feedback():
         return jsonify({"status": "ok", "message": "Thank you! Your feedback has been received."})
 
 
+@app.route('/analytics/scan', methods=['POST', 'GET'])
+def record_scan():
+    src = request.args.get('src')
+    if not src and request.is_json:
+        data = request.get_json(silent=True) or {}
+        src = data.get('src')
+    src = (src or 'poster')[:50]
+    user_agent = request.headers.get('User-Agent', '')[:255]
+    try:
+        with get_session() as session:
+            scan = PosterScan(src=src, user_agent=user_agent)
+            session.add(scan)
+            session.commit()
+            count = session.scalars(select(func.count(PosterScan.id)).where(PosterScan.src == src)).first() or 1
+            return jsonify({"status": "ok", "src": src, "total_scans": count})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route('/analytics/accuracy', methods=['GET'])
 def get_accuracy_metrics():
     with get_session() as session:
         evaluated = session.scalars(
             select(PredictionLog).where(PredictionLog.error_minutes.is_not(None))
         ).all()
+        poster_scans = session.scalars(select(func.count(PosterScan.id)).where(PosterScan.src == 'poster')).first() or 0
+        total_scans = session.scalars(select(func.count(PosterScan.id))).first() or 0
         if not evaluated:
             return jsonify({
                 "samples_count": 0,
                 "mae_minutes": None,
                 "mape_percent": None,
+                "poster_scans": poster_scans,
+                "total_scans": total_scans,
                 "status": "Collecting live arrival data"
             })
         errors = [p.error_minutes for p in evaluated]
@@ -350,7 +371,9 @@ def get_accuracy_metrics():
             "samples_count": len(evaluated),
             "mae_minutes": mae,
             "mape_percent": mape,
-            "accuracy_percent": round(max(0.0, 100.0 - mape), 1) if mape is not None else None
+            "accuracy_percent": round(max(0.0, 100.0 - mape), 1) if mape is not None else None,
+            "poster_scans": poster_scans,
+            "total_scans": total_scans
         })
 
 

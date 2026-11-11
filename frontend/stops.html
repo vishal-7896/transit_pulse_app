@@ -89,6 +89,21 @@
     </div>
   </main>
 
+  <div id="auth-modal" class="auth-modal is-hidden" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title">
+    <div class="auth-modal-card">
+      <div class="pass-slot" aria-hidden="true"></div>
+      <div class="auth-modal-badge-icon">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      </div>
+      <h3 id="auth-modal-title">One-Time Verification</h3>
+      <p id="auth-modal-copy" class="auth-modal-copy">Verify your number once to earn your Scout badge and prevent spam.</p>
+      <div class="auth-modal-actions">
+        <button id="auth-modal-continue" class="wide-button wide-button-primary" type="button">Verify with Mobile Number</button>
+        <button id="auth-modal-cancel" class="wide-button wide-button-secondary" type="button">Keep Browsing</button>
+      </div>
+    </div>
+  </div>
+
   <script src="storage.js"></script>
   <script src="ui.js"></script>
   <script src="api.js"></script>

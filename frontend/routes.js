@@ -12,19 +12,26 @@
     var changeUserButton = document.getElementById("change-user-btn");
     var topAvatarDot = document.getElementById("top-avatar-dot");
 
+    var urlParams = new URLSearchParams(window.location.search);
+    var src = urlParams.get("src");
+    if (src && window.TransitPulseAPI && window.TransitPulseAPI.logScan) {
+      TransitPulseAPI.logScan(src).catch(function () {});
+    }
+
     var userId = TransitPulseStorage.getUserId();
-    if (!userId) {
-      window.location.href = "register.html";
-      return;
+    var userName = TransitPulseStorage.getUserName() || "";
+    greeting.textContent = userName ? ("Hi, " + userName) : "Welcome to TransitPulse";
+    if (topAvatarDot) {
+      topAvatarDot.textContent = userName ? userName.charAt(0).toUpperCase() : "C";
     }
 
-    var userName = TransitPulseStorage.getUserName() || "there";
-    greeting.textContent = "Hi, " + userName;
-    if (topAvatarDot && userName) {
-      topAvatarDot.textContent = userName.charAt(0).toUpperCase();
+    var topProfileLink = document.querySelector(".top-bar-profile-link");
+    if (topProfileLink && !userId) {
+      topProfileLink.setAttribute("href", "register.html?return=routes.html");
+      topProfileLink.innerHTML = '<span class="top-avatar-dot">·</span> Sign in';
     }
 
-    if (window.TransitPulseAPI && window.TransitPulseAPI.getProfile) {
+    if (userId && window.TransitPulseAPI && window.TransitPulseAPI.getProfile) {
       window.TransitPulseAPI.getProfile().then(function (data) {
         var name = data && data.user && data.user.name;
         if (name && name !== "Commuter") {

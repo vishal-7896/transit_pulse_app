@@ -39,7 +39,7 @@
     var signOutBtn = $("signout-btn");
 
     if (!TransitPulseStorage.getUserId()) {
-      window.location.href = "register.html";
+      window.location.href = "register.html?return=profile.html";
       return;
     }
 

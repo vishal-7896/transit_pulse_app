@@ -1,4 +1,4 @@
-const CACHE_NAME = 'transitpulse-v10';
+const CACHE_NAME = 'transitpulse-v12';
 
 const ASSETS_TO_CACHE = [
   '/',
@@ -22,6 +22,8 @@ const ASSETS_TO_CACHE = [
   '/register.js',
   '/starred-ui.js',
   '/manifest.webmanifest',
+  '/poster.html',
+  '/icons/poster-qr.svg',
   '/icons/icon.svg',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
@@ -65,6 +67,7 @@ self.addEventListener('fetch', (event) => {
       url.pathname.startsWith('/favorites') ||
       url.pathname === '/profile' ||
       url.pathname === '/feedback' ||
+      url.pathname.startsWith('/analytics') ||
       (url.pathname === '/register' && event.request.method === 'POST') ||
       url.pathname.startsWith('/admin')) {
     return;

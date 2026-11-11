@@ -13,10 +13,6 @@
     var returnButton = document.getElementById("return-btn");
 
     var userId = TransitPulseStorage.getUserId();
-    if (!userId) {
-      window.location.href = "register.html";
-      return;
-    }
 
     var params = new URLSearchParams(window.location.search);
     var routeId = params.get("route_id");
@@ -275,6 +271,59 @@
 
     retryButton.addEventListener("click", loadStops);
 
+    
+    function openAuthModal(message) {
+      var modal = document.getElementById("auth-modal");
+      if (!modal) {
+        var returnUrl = window.location.pathname + window.location.search;
+        window.location.href = "register.html?return=" + encodeURIComponent(returnUrl);
+        return;
+      }
+      var copy = document.getElementById("auth-modal-copy");
+      if (copy && message) copy.textContent = message;
+      modal.classList.remove("is-hidden");
+      window.requestAnimationFrame(function () { modal.classList.add("is-open"); });
+    }
+
+    function closeAuthModal() {
+      var modal = document.getElementById("auth-modal");
+      if (!modal) return;
+      modal.classList.remove("is-open");
+      window.setTimeout(function () { modal.classList.add("is-hidden"); }, 200);
+    }
+
+    var authContinue = document.getElementById("auth-modal-continue");
+    if (authContinue) {
+      authContinue.addEventListener("click", function () {
+        var returnUrl = window.location.pathname + window.location.search;
+        window.location.href = "register.html?return=" + encodeURIComponent(returnUrl);
+      });
+    }
+
+    var authCancel = document.getElementById("auth-modal-cancel");
+    if (authCancel) {
+      authCancel.addEventListener("click", closeAuthModal);
+    }
+    var authModal = document.getElementById("auth-modal");
+    if (authModal) {
+      authModal.addEventListener("click", function (e) {
+        if (e.target === authModal) closeAuthModal();
+      });
+    }
+
+    var savedDir = null;
+    try {
+      savedDir = localStorage.getItem("tp_dir_" + routeId);
+    } catch (e) {}
+    var initialDirection = "forward";
+    if (savedDir === "forward" || savedDir === "return") {
+      initialDirection = savedDir;
+    } else {
+      var currentHour = new Date().getHours();
+      initialDirection = (currentHour < 13) ? "forward" : "return";
+    }
+    setDirection(initialDirection);
+
     loadStops();
     loadOperators();
 
@@ -477,6 +526,10 @@
       }
       star.addEventListener("click", function (event) {
         event.stopPropagation();
+        if (!TransitPulseStorage.getUserId()) {
+          openAuthModal("Verify your number once to save your favourite stops across devices.");
+          return;
+        }
         window.TransitPulseFavorites.toggle({
           route_stop_id: stop.route_stop_id,
           route_id: routeId,
@@ -520,6 +573,9 @@
     function setDirection(direction) {
       stopCountdown();
       selectedDirection = direction;
+      try {
+        localStorage.setItem("tp_dir_" + routeId, direction);
+      } catch (e) {}
       forwardButton.classList.toggle("is-active", direction === "forward");
       returnButton.classList.toggle("is-active", direction === "return");
       forwardButton.setAttribute("aria-pressed", String(direction === "forward"));
@@ -672,6 +728,10 @@
     }
 
     async function reportSighting(stop, button, etaValue, etaMeta) {
+      if (!TransitPulseStorage.getUserId()) {
+        openAuthModal("Verify your number once to earn your Scout badge and prevent spam.");
+        return;
+      }
       if (sightingCooldownActive) {
         etaMeta.className = "eta-meta eta-meta-warning";
         etaMeta.textContent = "A sighting was recently reported. Please wait before reporting again.";
@@ -767,7 +827,6 @@
       var crowdRow = document.createElement("div");
       crowdRow.style.cssText = "display:flex;gap:8px;";
 
-      // Stored values stay empty/moderate/packed (DB constraint); only the wording riders see changes.
       var CROWD_LABELS = { empty: "Empty seats", moderate: "Standing only", packed: "Fully packed" };
       ["empty", "moderate", "packed"].forEach(function (level) {
         var btn = document.createElement("button");
@@ -869,7 +928,6 @@
           '<small>Tap to close</small>' +
         '</div>';
 
-      // New badge(s): badge names come from our own server, but build with textContent anyway.
       if (unlocked.length) {
         var card = el.querySelector(".thanks-card");
         var box = document.createElement("div");

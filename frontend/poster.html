@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <script src="https://browser.sentry-cdn.com/8.38.0/bundle.min.js" crossorigin="anonymous"></script>
+  <script>
+    if (window.Sentry) {
+      Sentry.init({
+        dsn: "https://5900da1832d4c247e5f044781ce4d36b@o4512355430432768.ingest.us.sentry.io/4512355513794560",
+        tracesSampleRate: 0.1
+      });
+    }
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0e141b">
+  <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <title>TransitPulse — Bus Stop Poster & QR</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body class="page page-poster">
+  <main class="mobile-shell">
+    <header class="top-bar">
+      <a class="back-link" href="routes.html">← Back to routes</a>
+      <span class="brand-mini">TransitPulse</span>
+    </header>
+
+    <section class="poster-card" aria-label="Printable Bus Stop Poster">
+      <div class="pass-slot" aria-hidden="true"></div>
+      <div class="poster-badge-row">
+        <span class="poster-tag">Live Transit Notice</span>
+        <span class="poster-station-id">Bus Stop Unit</span>
+      </div>
+
+      <h1 class="poster-title">Know when your bus is coming.</h1>
+      <p class="poster-desc">Scan with your phone camera to see real-time arrival countdowns and track approaching buses.</p>
+
+      <div class="poster-divider" aria-hidden="true"></div>
+
+      <div class="poster-qr-frame" id="qr-frame">
+        <img src="icons/poster-qr.svg" alt="Scan QR code for TransitPulse Bus ETA" width="200" height="200">
+      </div>
+
+      <div class="poster-steps">
+        <div class="poster-step">
+          <span class="step-num">1</span>
+          <span class="step-label">Open phone camera</span>
+        </div>
+        <div class="poster-step">
+          <span class="step-num">2</span>
+          <span class="step-label">Scan code directly</span>
+        </div>
+        <div class="poster-step">
+          <span class="step-num">3</span>
+          <span class="step-label">View arrival countdown</span>
+        </div>
+      </div>
+
+      <div class="poster-url-box">
+        <span class="poster-url">transit-pulse-app.onrender.com/?src=poster</span>
+      </div>
+
+      <p class="poster-hint">Crowdsourced transit tracking • No app install required • Works in browser</p>
+
+      <div class="poster-actions" id="admin-actions">
+        <button type="button" class="wide-button wide-button-primary poster-print-btn" id="print-poster-btn">Print Bus Stop Poster</button>
+      </div>
+
+      <div class="poster-actions is-hidden" id="commuter-actions">
+        <a class="wide-button wide-button-primary poster-print-btn" href="routes.html">Browse Live Routes</a>
+      </div>
+    </section>
+
+    <div class="feedback-link-wrap">
+      <a class="subtle-feedback-link" href="routes.html">Return to routes →</a>
+    </div>
+  </main>
+
+  <script src="storage.js"></script>
+  <script>
+    (function () {
+      var urlParams = new URLSearchParams(window.location.search);
+      var isAdmin = urlParams.get("admin") === "1";
+      var userName = (window.TransitPulseStorage && window.TransitPulseStorage.getUserName()) || "";
+      if (userName && userName.toLowerCase().indexOf("vishal") !== -1) {
+        isAdmin = true;
+      }
+
+      var adminActions = document.getElementById("admin-actions");
+      var commuterActions = document.getElementById("commuter-actions");
+      if (!isAdmin) {
+        if (adminActions) adminActions.classList.add("is-hidden");
+        if (commuterActions) commuterActions.classList.remove("is-hidden");
+      }
+
+      var printBtn = document.getElementById("print-poster-btn");
+      if (printBtn) {
+        printBtn.addEventListener("click", function () {
+          window.print();
+        });
+      }
+    })();
+  </script>
+</body>
+</html>
