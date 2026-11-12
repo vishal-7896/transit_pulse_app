@@ -36,6 +36,11 @@ ALLOWED_EXTENSIONS = {'.html', '.js', '.css', '.png', '.jpg', '.jpeg',
                       '.svg', '.ico', '.webmanifest', '.woff2'}
 
 
+@app.route('/ping', methods=['GET'])
+def ping():
+    return jsonify({"status": "ok", "time": datetime.utcnow().isoformat()}), 200
+
+
 @app.route('/')
 def home():
     return send_from_directory(FRONTEND_DIR, 'index.html')

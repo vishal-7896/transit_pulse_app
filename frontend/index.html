@@ -2,14 +2,20 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <script src="https://browser.sentry-cdn.com/8.38.0/bundle.min.js" crossorigin="anonymous"></script>
+  <link rel="preload" href="fonts/barlow-condensed-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/barlow-condensed-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/public-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/public-sans-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <script src="https://browser.sentry-cdn.com/8.38.0/bundle.min.js" crossorigin="anonymous" defer></script>
   <script>
-    if (window.Sentry) {
-      Sentry.init({
-        dsn: "https://5900da1832d4c247e5f044781ce4d36b@o4512355430432768.ingest.us.sentry.io/4512355513794560",
-        tracesSampleRate: 0.1
-      });
-    }
+    window.addEventListener('DOMContentLoaded', function () {
+      if (window.Sentry) {
+        Sentry.init({
+          dsn: "https://5900da1832d4c247e5f044781ce4d36b@o4512355430432768.ingest.us.sentry.io/4512355513794560",
+          tracesSampleRate: 0.1
+        });
+      }
+    });
   </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#0e141b">
@@ -57,8 +63,8 @@
       </div>
 
       <div class="landing-actions" aria-label="Account actions">
-        <button class="action-button action-button-primary js-primary-cta" type="button">Login / Sign Up</button>
-        <a class="action-button action-button-secondary js-secondary-cta" href="register.html">Get Started</a>
+        <button class="action-button action-button-primary js-primary-cta" type="button">Browse live routes</button>
+        <a class="action-button action-button-secondary js-secondary-cta" href="#what-is">How it works</a>
       </div>
       <div class="landing-message" role="status" aria-live="polite"></div>
       <a class="scroll-hint" href="#what-is">See how it works ↓</a>
@@ -137,8 +143,8 @@
       <h2 id="cta-title">Stop waiting. Start planning.</h2>
       <p class="home-lead">Sign up with your phone number and check your first ETA in under a minute.</p>
       <div class="landing-actions" aria-label="Get started">
-        <button class="action-button action-button-primary js-primary-cta" type="button">Login / Sign Up</button>
-        <a class="action-button action-button-secondary js-secondary-cta" href="register.html">Get Started</a>
+        <button class="action-button action-button-primary js-primary-cta" type="button">Browse live routes</button>
+        <a class="action-button action-button-secondary js-secondary-cta" href="#what-is">How it works</a>
       </div>
       <div class="landing-message" role="status" aria-live="polite"></div>
     </section>
