@@ -244,26 +244,26 @@
         var isBeforeMorning = totalMins < 6 * 60;
         var minsToMorning = isBeforeMorning ? (6 * 60 - totalMins) : (24 * 60 - totalMins + 6 * 60);
         return {
-          currentSlotTime: isBeforeMorning ? "6:00 AM" : "Closed",
-          currentSlotMinutes: minsToMorning,
-          upcomingSlots: ["Tomorrow 6:00 AM", "6:15 AM"],
+          currentSlotTime: isBeforeMorning ? "6:00 AM" : "NO BUS",
+          currentSlotMinutes: isBeforeMorning ? minsToMorning : 0,
+          upcomingSlots: [],
           previousSlotTime: "8:00 PM",
           isClosed: true,
           message: isBeforeMorning
             ? "Service starts at 6:00 AM · First bus in ~" + minsToMorning + " min"
-            : "Service ended for today · Last bus from depot departs by 8:00 PM · Resumes at 6:00 AM"
+            : "Last bus from depot departs by 8:00 PM"
         };
       }
 
       var upcoming = slots.filter(function (s) { return s >= totalMins; });
       if (upcoming.length === 0) {
         return {
-          currentSlotTime: "Closed",
+          currentSlotTime: "NO BUS",
           currentSlotMinutes: 0,
-          upcomingSlots: ["Tomorrow 6:00 AM", "6:15 AM"],
+          upcomingSlots: [],
           previousSlotTime: "8:00 PM",
           isClosed: true,
-          message: "Service ended for today · Last bus from depot departs by 8:00 PM · Resumes at 6:00 AM"
+          message: "Last bus from depot departs by 8:00 PM"
         };
       }
 
@@ -639,26 +639,21 @@
         etaMeta.textContent = "Final Stop · Bus terminates here. Tap Check ETA.";
         etaButton.textContent = "Check ETA";
       } else if (initialRole === "start_terminus") {
-        var slots = getDepartureSlotsInfo();
         etaLabel.textContent = "DEPARTURE";
-        etaValue.textContent = slots.currentSlotTime;
-        etaValue.classList.add("has-clock");
-        if (slots.upcomingSlots.length > 0) {
-          etaUpcoming.textContent = "Upcoming: " + slots.upcomingSlots.join(" · ");
-          etaUpcoming.classList.remove("is-hidden");
-        } else {
-          etaUpcoming.textContent = "";
-          etaUpcoming.classList.add("is-hidden");
-        }
-        etaMeta.textContent = slots.isClosed
-          ? "Last bus departs by 8:00 PM"
-          : ("Scheduled slot · Departs in ~" + slots.currentSlotMinutes + " min");
+        etaValue.textContent = "—";
+        etaValue.classList.remove("has-clock");
+        etaUpcoming.textContent = "";
+        etaUpcoming.classList.add("is-hidden");
+        etaMeta.textContent = "Ready to check the latest departure for this stop.";
         etaButton.textContent = "Check Departure";
       } else {
         etaLabel.textContent = "ETA";
         etaValue.textContent = "—";
+        etaValue.classList.remove("has-clock");
+        etaUpcoming.textContent = "";
+        etaUpcoming.classList.add("is-hidden");
         etaMeta.textContent = selectedDirection
-          ? "Tap Check ETA to get arrival time."
+          ? "Ready to check the latest ETA for this stop."
           : "Select direction above, then check ETA.";
         etaButton.textContent = "Check ETA";
       }
@@ -737,10 +732,29 @@
 
       var selectedEta = details.querySelector(".eta-value");
       var selectedMeta = details.querySelector(".eta-meta");
-      if (selectedEta) selectedEta.textContent = "—";
+      var selectedUpcoming = details.querySelector(".eta-upcoming");
+      var selectedIndicator = details.querySelector(".live-indicator");
+      if (selectedIndicator) selectedIndicator.classList.add("is-hidden");
+      if (selectedUpcoming) {
+        selectedUpcoming.textContent = "";
+        selectedUpcoming.classList.add("is-hidden");
+      }
+      if (selectedEta) {
+        selectedEta.textContent = "—";
+        selectedEta.classList.remove("has-clock");
+      }
       if (selectedMeta) {
         selectedMeta.className = "eta-meta";
-        selectedMeta.textContent = selectedDirection ? "Ready to check the latest ETA for this stop." : "Select direction above, then check ETA.";
+        var selRole = getStopRole(stop);
+        if (!selectedDirection) {
+          selectedMeta.textContent = "Select direction above, then check ETA.";
+        } else if (selRole === "start_terminus") {
+          selectedMeta.textContent = "Ready to check the latest departure for this stop.";
+        } else if (selRole === "final_terminus") {
+          selectedMeta.textContent = "Final Stop · Bus terminates here. Tap Check ETA.";
+        } else {
+          selectedMeta.textContent = "Ready to check the latest ETA for this stop.";
+        }
       }
     }
 
@@ -791,7 +805,10 @@
         }
 
         if (role === "final_terminus") {
-          if (upcomingEl) upcomingEl.classList.add("is-hidden");
+          if (upcomingEl) {
+            upcomingEl.textContent = "";
+            upcomingEl.classList.add("is-hidden");
+          }
           if (val) {
             val.textContent = "—";
             val.classList.remove("has-clock");
@@ -803,30 +820,25 @@
           }
           if (btn) btn.textContent = "Check ETA";
         } else if (role === "start_terminus") {
-          var slots = getDepartureSlotsInfo();
-          if (label) label.textContent = "DEPARTURE";
-          if (val) {
-            val.textContent = slots.currentSlotTime;
-            val.classList.add("has-clock");
-          }
           if (upcomingEl) {
-            if (slots.upcomingSlots.length > 0) {
-              upcomingEl.textContent = "Upcoming: " + slots.upcomingSlots.join(" · ");
-              upcomingEl.classList.remove("is-hidden");
-            } else {
-              upcomingEl.textContent = "";
-              upcomingEl.classList.add("is-hidden");
-            }
+            upcomingEl.textContent = "";
+            upcomingEl.classList.add("is-hidden");
           }
+          if (val) {
+            val.textContent = "—";
+            val.classList.remove("has-clock");
+          }
+          if (label) label.textContent = "DEPARTURE";
           if (meta) {
             meta.className = "eta-meta";
-            meta.textContent = slots.isClosed
-              ? "Last bus departs by 8:00 PM"
-              : ("Scheduled slot · Departs in ~" + slots.currentSlotMinutes + " min");
+            meta.textContent = "Ready to check the latest departure for this stop.";
           }
           if (btn) btn.textContent = "Check Departure";
         } else {
-          if (upcomingEl) upcomingEl.classList.add("is-hidden");
+          if (upcomingEl) {
+            upcomingEl.textContent = "";
+            upcomingEl.classList.add("is-hidden");
+          }
           if (val) {
             val.textContent = "—";
             val.classList.remove("has-clock");
@@ -834,7 +846,7 @@
           if (label) label.textContent = "ETA";
           if (meta) {
             meta.className = "eta-meta";
-            meta.textContent = "Direction set to " + (selectedDirection === "forward" ? forwardLabel : returnLabel) + ". Tap Check ETA.";
+            meta.textContent = "Ready to check the latest ETA for this stop.";
           }
           if (btn) btn.textContent = "Check ETA";
         }
@@ -894,6 +906,23 @@
       var card = etaValue.closest(".stop-card");
       var upcomingEl = card ? card.querySelector(".eta-upcoming") : null;
 
+      if (eta.status === "closed" || eta.clock_time === "NO BUS" || eta.is_closed) {
+        stopCountdown();
+        if (liveIndicator) liveIndicator.classList.add("is-hidden");
+        if (upcomingEl) {
+          upcomingEl.textContent = "";
+          upcomingEl.classList.add("is-hidden");
+        }
+        etaValue.textContent = "NO BUS";
+        etaValue.classList.add("has-clock");
+        var originLabel = selectedDirection === "return" ? "Delhi" : "Hapur";
+        var defMeta = role === "start_terminus"
+          ? "Last bus from depot departs by 8:00 PM"
+          : (role === "final_terminus" ? "Last bus terminates here by ~9:30 PM" : "Last bus from " + originLabel + " departs by 8:00 PM");
+        etaMeta.textContent = eta.message || defMeta;
+        return;
+      }
+
       if (eta.status === "live") {
         if (role === "start_terminus" || eta.is_departure) {
           var labelEl = etaValue.closest(".eta-panel") ? etaValue.closest(".eta-panel").querySelector(".eta-label") : null;
@@ -905,16 +934,24 @@
             etaValue.textContent = getDisplayValue(eta["eta minutes"], "—") + " min";
             etaValue.classList.remove("has-clock");
           }
-          if (upcomingEl && eta.upcoming_text) {
-            upcomingEl.textContent = eta.upcoming_text;
-            upcomingEl.classList.remove("is-hidden");
+          if (upcomingEl) {
+            if (eta.upcoming_text && eta.upcoming_text.trim() !== "Upcoming:") {
+              upcomingEl.textContent = eta.upcoming_text;
+              upcomingEl.classList.remove("is-hidden");
+            } else {
+              upcomingEl.textContent = "";
+              upcomingEl.classList.add("is-hidden");
+            }
           }
           if (liveIndicator) liveIndicator.classList.remove("is-hidden");
           etaMeta.textContent = eta.message || (buildLiveMetaText(eta) + terminatesSuffix);
           return;
         }
 
-        if (upcomingEl) upcomingEl.classList.add("is-hidden");
+        if (upcomingEl) {
+          upcomingEl.textContent = "";
+          upcomingEl.classList.add("is-hidden");
+        }
         etaValue.classList.remove("has-clock");
 
         if (currentEtaStop && startCountdown(currentEtaStop, eta, etaValue, etaMeta)) return;
@@ -934,7 +971,7 @@
         etaValue.classList.add("has-clock");
         if (upcomingEl) {
           var upText = eta.upcoming_text !== undefined ? eta.upcoming_text : (slots.upcomingSlots.length > 0 ? "Upcoming: " + slots.upcomingSlots.join(" · ") : "");
-          if (upText) {
+          if (upText && upText.trim() !== "Upcoming:") {
             upcomingEl.textContent = upText;
             upcomingEl.classList.remove("is-hidden");
           } else {
@@ -943,11 +980,14 @@
           }
         }
         var mins = eta["eta minutes"] !== undefined ? eta["eta minutes"] : slots.currentSlotMinutes;
-        etaMeta.textContent = eta.message || (slots.isClosed ? "Last bus departs by 8:00 PM" : ("Scheduled slot · Departs in ~" + mins + " min"));
+        etaMeta.textContent = eta.message || (slots.isClosed ? "Last bus from depot departs by 8:00 PM" : ("Scheduled slot · Departs in ~" + mins + " min"));
         return;
       }
 
-      if (upcomingEl) upcomingEl.classList.add("is-hidden");
+      if (upcomingEl) {
+        upcomingEl.textContent = "";
+        upcomingEl.classList.add("is-hidden");
+      }
       etaValue.classList.remove("has-clock");
 
       if (eta.status === "passed") {
@@ -965,7 +1005,7 @@
 
       if (eta.status === "scheduled" || eta.status === "stale" || eta.status === "no data") {
         stopCountdown();
-        var mins = eta["eta minutes"] || 15;
+        var mins = Number.isFinite(eta["eta minutes"]) && eta["eta minutes"] > 0 ? eta["eta minutes"] : 15;
         etaValue.textContent = "~" + mins + " min";
         etaMeta.textContent = eta.message || ("About " + mins + " min (usual timing)" + terminatesSuffix);
         return;

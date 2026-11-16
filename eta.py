@@ -250,9 +250,29 @@ def calculate_eta(route_stop_id, direction='forward'):
         seen_ago_seconds = int((curr_time - freshest_seen_at).total_seconds()) if freshest_seen_at else 0
         seen_ago_minutes = max(0, round(seen_ago_seconds / 60))
 
-        if is_origin:
-            upcoming_str = "Upcoming: " + " · ".join(slots_info["upcoming_slots"])
+        upcoming_str = ("Upcoming: " + " · ".join(slots_info["upcoming_slots"])) if (slots_info and slots_info.get("upcoming_slots")) else ""
+        origin_name_label = "Hapur" if direction == 'forward' else "Delhi"
+        latest_evening_dep_time = None
+        latest_evening_dep_offset = None
+        origin_target_order = first_order if direction == 'forward' else last_order
+        for s_order, s_name, s_seen_at, _, _ in sightings:
+            if s_order == origin_target_order:
+                dt = datetime.datetime.fromisoformat(s_seen_at) if isinstance(s_seen_at, str) else s_seen_at
+                ist = dt + datetime.timedelta(hours=5, minutes=30)
+                if ist.date() == now_ist.date() and ist.hour >= 17:
+                    dep_m = match_departure_to_slot(ist)
+                    latest_evening_dep_time = dep_m['actual_time']
+                    latest_evening_dep_offset = dep_m['short_offset']
+                    break
 
+        if is_origin:
+            night_dep_msg = f"Last bus departed at {latest_evening_dep_time} ({latest_evening_dep_offset})" if latest_evening_dep_time else "Last bus from depot departs by 8:00 PM"
+        elif is_terminus:
+            night_dep_msg = "Last bus arrived · Service ended for today" if latest_evening_dep_time else "Last bus terminates here by ~9:30 PM"
+        else:
+            night_dep_msg = f"Last bus passed · Departed {origin_name_label} at {latest_evening_dep_time}" if latest_evening_dep_time else f"Last bus from {origin_name_label} departs by 8:00 PM"
+
+        if is_origin:
             if origin_sightings:
                 latest_origin_elapsed, origin_name, origin_seen_dt = origin_sightings[0]
                 origin_seen_ist = origin_seen_dt + datetime.timedelta(hours=5, minutes=30)
@@ -262,13 +282,14 @@ def calculate_eta(route_stop_id, direction='forward'):
 
                 if slots_info.get("is_closed"):
                     return {
-                        "status": "live",
+                        "status": "closed",
                         "eta seconds": 0,
                         "eta minutes": 0,
                         "clock_time": "NO BUS",
                         "upcoming_text": "",
                         "spotted at": origin_name,
                         "is_departure": True,
+                        "is_closed": True,
                         "reports_count": fresh_sightings_count,
                         "seen_ago_minutes": elapsed_min,
                         "seen_ago_seconds": int(latest_origin_elapsed),
@@ -306,9 +327,20 @@ def calculate_eta(route_stop_id, direction='forward'):
 
             cur_mins = slots_info["current_slot_minutes"]
             if slots_info.get("is_closed"):
-                dep_msg = "Last bus departs by 8:00 PM"
-            else:
-                dep_msg = f"Scheduled slot · Departs in ~{cur_mins} min" if cur_mins > 0 else "Scheduled slot · Departing now"
+                return {
+                    "status": "closed",
+                    "eta minutes": 0,
+                    "clock_time": "NO BUS",
+                    "upcoming_text": "",
+                    "headway_minutes": 0,
+                    "is_departure": True,
+                    "is_closed": True,
+                    "reports_count": 0,
+                    "tier": sched["tier"],
+                    "message": night_dep_msg
+                }
+
+            dep_msg = f"Scheduled slot · Departs in ~{cur_mins} min" if cur_mins > 0 else "Scheduled slot · Departing now"
 
             return {
                 "status": "scheduled",
@@ -349,9 +381,23 @@ def calculate_eta(route_stop_id, direction='forward'):
 
         if passed_sightings:
             min_elapsed, passed_seen_dt = min(passed_sightings, key=lambda x: x[0])
-            rem_sec = headway_sec - min_elapsed
             passed_mins = max(0, round(min_elapsed / 60))
 
+            if sched["is_night"]:
+                return {
+                    "status": "closed",
+                    "clock_time": "NO BUS",
+                    "eta minutes": 0,
+                    "headway_minutes": 0,
+                    "is_closed": True,
+                    "reports_count": fresh_sightings_count,
+                    "seen_ago_minutes": passed_mins,
+                    "seen_ago_seconds": int(min_elapsed),
+                    "tier": sched["tier"],
+                    "message": f"Last bus passed {passed_mins}m ago" if passed_mins <= 30 else night_dep_msg
+                }
+
+            rem_sec = headway_sec - min_elapsed
             if rem_sec > 60:
                 next_mins = max(1, round(rem_sec / 60))
                 msg = f"Bus passed {passed_mins}m ago · Next bus expected in ~{next_mins} min"
@@ -372,15 +418,22 @@ def calculate_eta(route_stop_id, direction='forward'):
             }
 
         if sched["is_night"]:
-            sched_msg = "Last bus departs by 8:00 PM"
-        else:
-            sched_msg = f"About {headway_min} min (usual timing)"
+            return {
+                "status": "closed",
+                "clock_time": "NO BUS",
+                "eta minutes": 0,
+                "headway_minutes": 0,
+                "is_closed": True,
+                "reports_count": 0,
+                "tier": sched["tier"],
+                "message": night_dep_msg
+            }
 
         return {
             "status": "scheduled",
-            "eta minutes": headway_min if not sched["is_night"] else 0,
+            "eta minutes": headway_min,
             "headway_minutes": headway_min,
             "reports_count": 0,
             "tier": sched["tier"],
-            "message": sched_msg
+            "message": f"About {headway_min} min (usual timing)"
         }
