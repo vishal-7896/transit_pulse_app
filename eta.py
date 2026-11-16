@@ -4,6 +4,138 @@ from db import get_session
 from alchemy_models import RouteStop, Stop, Sighting, Route
 
 
+def get_corridor_slots():
+    slots = []
+    for t in range(6 * 60, 10 * 60 + 1, 15):
+        slots.append(t)
+    for t in range(10 * 60 + 30, 12 * 60 + 1, 30):
+        slots.append(t)
+    for t in range(12 * 60 + 35, 14 * 60 + 1, 35):
+        slots.append(t)
+    for t in range(14 * 60 + 30, 18 * 60 + 1, 30):
+        slots.append(t)
+    for t in range(18 * 60 + 40, 20 * 60 + 1, 40):
+        slots.append(t)
+    return sorted(list(set(slots)))
+
+
+def format_clock_12h(total_minutes):
+    total_minutes = total_minutes % (24 * 60)
+    h = total_minutes // 60
+    m = total_minutes % 60
+    period = "AM" if h < 12 else "PM"
+    h12 = h % 12 or 12
+    return f"{h12}:{m:02d} {period}"
+
+
+def get_departure_slots_info(now_ist):
+    total_mins = now_ist.hour * 60 + now_ist.minute
+    slots = get_corridor_slots()
+
+    if total_mins > 20 * 60 or total_mins < 6 * 60:
+        is_before_morning = total_mins < 6 * 60
+        mins_to_morning = (6 * 60 - total_mins) if is_before_morning else (24 * 60 - total_mins + 6 * 60)
+        return {
+            "current_slot_time": "6:00 AM" if is_before_morning else "NO BUS",
+            "current_slot_minutes": mins_to_morning if is_before_morning else 0,
+            "upcoming_slots": [],
+            "previous_slot_time": "8:00 PM",
+            "is_closed": True,
+            "message": f"First bus departs at 6:00 AM · in ~{mins_to_morning} min" if is_before_morning else "Last bus departs by 8:00 PM"
+        }
+
+    upcoming = [s for s in slots if s >= total_mins]
+    if not upcoming:
+        return {
+            "current_slot_time": "NO BUS",
+            "current_slot_minutes": 0,
+            "upcoming_slots": [],
+            "previous_slot_time": "8:00 PM",
+            "is_closed": True,
+            "message": "Last bus departs by 8:00 PM"
+        }
+
+    current_slot = upcoming[0]
+    next_slots = upcoming[1:3]
+    prev_slots = [s for s in slots if s < total_mins]
+    prev_slot = prev_slots[-1] if prev_slots else None
+
+    return {
+        "current_slot_time": format_clock_12h(current_slot),
+        "current_slot_minutes": max(0, current_slot - total_mins),
+        "upcoming_slots": [format_clock_12h(s) for s in next_slots],
+        "previous_slot_time": format_clock_12h(prev_slot) if prev_slot is not None else None,
+        "is_closed": False
+    }
+
+
+def match_departure_to_slot(seen_dt_ist):
+    seen_mins = seen_dt_ist.hour * 60 + seen_dt_ist.minute
+    slots = get_corridor_slots()
+    closest = min(slots, key=lambda s: abs(s - seen_mins))
+    diff = seen_mins - closest
+    slot_str = format_clock_12h(closest)
+    seen_str = format_clock_12h(seen_mins)
+
+    if diff == 0:
+        offset_text = "on time"
+        short_offset = "on time"
+    elif diff > 0:
+        offset_text = f"+{diff}m late"
+        short_offset = f"+{diff}m"
+    else:
+        offset_text = f"{abs(diff)}m early"
+        short_offset = f"{diff}m"
+
+    return {
+        "scheduled_slot": slot_str,
+        "actual_time": seen_str,
+        "offset_minutes": diff,
+        "offset_text": offset_text,
+        "short_offset": short_offset,
+        "summary": f"{slot_str} bus departed at {seen_str} ({short_offset})"
+    }
+
+
+def get_headway_schedule(is_origin=False, now_ist=None):
+    if now_ist is None:
+        now_ist = datetime.datetime.utcnow() + datetime.timedelta(hours=5, minutes=30)
+    hour = now_ist.hour + now_ist.minute / 60.0
+
+    if 6.0 <= hour < 10.0:
+        headway = 15 if is_origin else 22
+        tier = "Morning peak"
+        desc = "Frequent departures every ~15 min" if is_origin else "Corridor headway ~22 min"
+    elif 10.0 <= hour < 12.0:
+        headway = 30
+        tier = "Midday"
+        desc = "Regular departures every ~30 min"
+    elif 12.0 <= hour < 14.0:
+        headway = 35 if is_origin else 40
+        tier = "Afternoon slump"
+        desc = "Departures every 35-40 min" if is_origin else "Corridor headway 35-40 min"
+    elif 14.0 <= hour < 18.0:
+        headway = 25 if is_origin else 30
+        tier = "Evening corridor"
+        desc = "Regular departures every ~30 min"
+    elif 18.0 <= hour <= 20.0:
+        headway = 35 if is_origin else 40
+        tier = "Late evening"
+        desc = "Final departures until 8:00 PM (last bus leaves 8:00 PM)"
+    else:
+        headway = 0
+        tier = "Service Closed"
+        desc = "Service ended for today (regular service runs 6:00 AM - 8:00 PM)"
+
+    return {
+        "headway_minutes": headway,
+        "headway_seconds": headway * 60,
+        "tier": tier,
+        "description": desc,
+        "is_night": hour > 20.0 or hour < 6.0
+    }
+
+
 def calculate_eta(route_stop_id, direction='forward'):
     with get_session() as session:
         this_stop = session.get(RouteStop, route_stop_id)
@@ -14,25 +146,41 @@ def calculate_eta(route_stop_id, direction='forward'):
         route_id = this_stop.route_id
         user_stop_order = this_stop.stop_order
 
-        route = session.get(Route, route_id)
-        fallback_freq = route.frequency_minutes if route and route.frequency_minutes else 15
-
         route_stops = session.scalars(
             select(RouteStop)
             .where(RouteStop.route_id == route_id)
             .order_by(RouteStop.stop_order)
         ).all()
 
+        if not route_stops:
+            return {"status": "error", "message": "no route stops found"}, 404
+
+        first_order = route_stops[0].stop_order
+        last_order = route_stops[-1].stop_order
+
+        stop_name = this_stop.stop.name if this_stop.stop else ""
+        stop_name_lower = stop_name.lower()
+
+        if direction == 'return':
+            is_origin = (user_stop_order == last_order) or ('delhi' in stop_name_lower or 'anand vihar' in stop_name_lower or 'kaushambi' in stop_name_lower)
+            is_terminus = (user_stop_order == first_order) or ('hapur' in stop_name_lower)
+        else:
+            is_origin = (user_stop_order == first_order) or ('hapur' in stop_name_lower)
+            is_terminus = (user_stop_order == last_order) or ('delhi' in stop_name_lower or 'anand vihar' in stop_name_lower or 'kaushambi' in stop_name_lower)
+
+        now_ist = datetime.datetime.utcnow() + datetime.timedelta(hours=5, minutes=30)
+        sched = get_headway_schedule(is_origin=is_origin, now_ist=now_ist)
+        headway_min = sched["headway_minutes"]
+        headway_sec = sched["headway_seconds"]
+        slots_info = get_departure_slots_info(now_ist)
+
         travel_times = {rs.stop_order: (rs.avg_travel_seconds or 0) for rs in route_stops}
 
-        # Every fresh sighting in this direction is fetched, including ones already PAST this stop.
-        # A rider's newest report decides where "their" bus is; if that is beyond this stop, the bus
-        # has gone by, and their older report from before the stop must not keep counting.
         def is_beyond(order):
             return order < user_stop_order if direction == 'return' else order > user_stop_order
 
         stmt = (
-            select(RouteStop.stop_order, Stop.name, Sighting.seen_at, Sighting.user_id)
+            select(RouteStop.stop_order, Stop.name, Sighting.seen_at, Sighting.user_id, RouteStop.id)
             .join(RouteStop, Sighting.route_stop_id == RouteStop.id)
             .join(Stop, RouteStop.stop_id == Stop.id)
             .where(
@@ -43,29 +191,22 @@ def calculate_eta(route_stop_id, direction='forward'):
         )
         sightings = session.execute(stmt).all()
 
-        if not sightings:
-            return {
-                "status": "scheduled",
-                "eta minutes": fallback_freq,
-                "reports_count": 0,
-                "message": f"About {fallback_freq} min, based on usual timing, no live reports"
-            }
-
         curr_time = datetime.datetime.utcnow()
         approaching_buses = []
-        passed_buses = []
+        passed_sightings = []
+        origin_sightings = []
         fresh_sightings_count = 0
         freshest_seen_at = None
         seen_users = set()
 
-        for sighting_stop_order, stop_name, seen_at, user_id in sightings:
+        for sighting_stop_order, s_stop_name, seen_at, user_id, s_rs_id in sightings:
             if isinstance(seen_at, str):
                 seen_at_formatted = datetime.datetime.fromisoformat(seen_at)
             else:
                 seen_at_formatted = seen_at
 
             age = curr_time - seen_at_formatted
-            if age > datetime.timedelta(minutes=30):
+            if age > datetime.timedelta(minutes=45):
                 continue
 
             if user_id and user_id in seen_users:
@@ -79,35 +220,106 @@ def calculate_eta(route_stop_id, direction='forward'):
             fresh_sightings_count += 1
             elapsed = age.total_seconds()
 
-            if is_beyond(sighting_stop_order):
-                passed_buses.append(-1)
+            if is_origin:
+                if s_rs_id == route_stop_id or sighting_stop_order == user_stop_order:
+                    origin_sightings.append((elapsed, s_stop_name, seen_at_formatted))
+                else:
+                    passed_sightings.append(elapsed)
+                continue
+
+            if is_beyond(sighting_stop_order) or sighting_stop_order == user_stop_order:
+                passed_sightings.append((elapsed, seen_at_formatted))
                 continue
 
             min_order = min(sighting_stop_order, user_stop_order)
             max_order = max(sighting_stop_order, user_stop_order)
             remaining_seconds = sum(travel_times.get(k, 0) for k in range(min_order + 1, max_order + 1))
-
             eta_seconds = remaining_seconds - elapsed
 
             if eta_seconds > 0:
                 approaching_buses.append({
                     "eta_seconds": int(eta_seconds),
                     "eta_minutes": max(1, round(eta_seconds / 60)),
-                    "spotted_at": stop_name
+                    "spotted_at": s_stop_name,
+                    "seen_ago_seconds": int(elapsed),
+                    "seen_ago_minutes": max(0, round(elapsed / 60))
                 })
             else:
-                passed_buses.append(eta_seconds)
+                passed_sightings.append((elapsed, seen_at_formatted))
 
         seen_ago_seconds = int((curr_time - freshest_seen_at).total_seconds()) if freshest_seen_at else 0
         seen_ago_minutes = max(0, round(seen_ago_seconds / 60))
 
-        if fresh_sightings_count == 0:
+        if is_origin:
+            upcoming_str = "Upcoming: " + " · ".join(slots_info["upcoming_slots"])
+
+            if origin_sightings:
+                latest_origin_elapsed, origin_name, origin_seen_dt = origin_sightings[0]
+                origin_seen_ist = origin_seen_dt + datetime.timedelta(hours=5, minutes=30)
+                dep_match = match_departure_to_slot(origin_seen_ist)
+                remaining = headway_sec - latest_origin_elapsed
+                elapsed_min = max(0, round(latest_origin_elapsed / 60))
+
+                if slots_info.get("is_closed"):
+                    return {
+                        "status": "live",
+                        "eta seconds": 0,
+                        "eta minutes": 0,
+                        "clock_time": "NO BUS",
+                        "upcoming_text": "",
+                        "spotted at": origin_name,
+                        "is_departure": True,
+                        "reports_count": fresh_sightings_count,
+                        "seen_ago_minutes": elapsed_min,
+                        "seen_ago_seconds": int(latest_origin_elapsed),
+                        "headway_minutes": 0,
+                        "tier": sched["tier"],
+                        "departure_match": dep_match,
+                        "message": f"Last bus departed at {dep_match['actual_time']} ({dep_match['short_offset']})"
+                    }
+
+                if remaining > 60:
+                    rem_sec = int(remaining)
+                    rem_min = max(1, round(remaining / 60))
+                    msg = f"{dep_match['summary']} · Next in ~{rem_min} min"
+                else:
+                    rem_sec = 60
+                    rem_min = 1
+                    msg = f"{dep_match['summary']} · Next bus due to depart now"
+
+                return {
+                    "status": "live",
+                    "eta seconds": rem_sec,
+                    "eta minutes": rem_min,
+                    "clock_time": slots_info["current_slot_time"],
+                    "upcoming_text": upcoming_str,
+                    "spotted at": origin_name,
+                    "is_departure": True,
+                    "reports_count": fresh_sightings_count,
+                    "seen_ago_minutes": elapsed_min,
+                    "seen_ago_seconds": int(latest_origin_elapsed),
+                    "headway_minutes": headway_min,
+                    "tier": sched["tier"],
+                    "departure_match": dep_match,
+                    "message": msg
+                }
+
+            cur_mins = slots_info["current_slot_minutes"]
+            if slots_info.get("is_closed"):
+                dep_msg = "Last bus departs by 8:00 PM"
+            else:
+                dep_msg = f"Scheduled slot · Departs in ~{cur_mins} min" if cur_mins > 0 else "Scheduled slot · Departing now"
+
             return {
                 "status": "scheduled",
-                "eta minutes": fallback_freq,
+                "eta minutes": cur_mins if cur_mins > 0 else headway_min,
+                "clock_time": slots_info["current_slot_time"],
+                "upcoming_text": upcoming_str,
+                "headway_minutes": headway_min,
+                "is_departure": True,
                 "reports_count": 0,
-                "seen_ago_minutes": seen_ago_minutes,
-                "message": f"About {fallback_freq} min, based on usual timing, no live reports"
+                "tier": sched["tier"],
+                "message": dep_msg
             }
 
         if approaching_buses:
@@ -120,8 +332,10 @@ def calculate_eta(route_stop_id, direction='forward'):
                 "eta minutes": earliest["eta_minutes"],
                 "spotted at": earliest["spotted_at"],
                 "reports_count": fresh_sightings_count,
-                "seen_ago_minutes": seen_ago_minutes,
-                "seen_ago_seconds": seen_ago_seconds
+                "seen_ago_minutes": earliest["seen_ago_minutes"],
+                "seen_ago_seconds": earliest["seen_ago_seconds"],
+                "headway_minutes": headway_min,
+                "tier": sched["tier"]
             }
 
             if len(approaching_buses) > 1:
@@ -133,18 +347,40 @@ def calculate_eta(route_stop_id, direction='forward'):
 
             return response
 
-        if passed_buses:
+        if passed_sightings:
+            min_elapsed, passed_seen_dt = min(passed_sightings, key=lambda x: x[0])
+            rem_sec = headway_sec - min_elapsed
+            passed_mins = max(0, round(min_elapsed / 60))
+
+            if rem_sec > 60:
+                next_mins = max(1, round(rem_sec / 60))
+                msg = f"Bus passed {passed_mins}m ago · Next bus expected in ~{next_mins} min"
+            else:
+                next_mins = 1
+                msg = f"Bus passed {passed_mins}m ago · Next bus due now"
+
             return {
                 "status": "passed",
-                "message": "Bus may just have passed",
-                "next bus approx mins": fallback_freq,
+                "eta minutes": next_mins,
+                "next bus approx mins": next_mins,
+                "headway_minutes": headway_min,
                 "reports_count": fresh_sightings_count,
-                "seen_ago_minutes": seen_ago_minutes
+                "seen_ago_minutes": passed_mins,
+                "seen_ago_seconds": int(min_elapsed),
+                "tier": sched["tier"],
+                "message": msg
             }
+
+        if sched["is_night"]:
+            sched_msg = "Last bus departs by 8:00 PM"
+        else:
+            sched_msg = f"About {headway_min} min (usual timing)"
 
         return {
             "status": "scheduled",
-            "eta minutes": fallback_freq,
+            "eta minutes": headway_min if not sched["is_night"] else 0,
+            "headway_minutes": headway_min,
             "reports_count": 0,
-            "message": f"About {fallback_freq} min, based on usual timing, no live reports"
+            "tier": sched["tier"],
+            "message": sched_msg
         }
