@@ -8,6 +8,7 @@ except Exception:
     pass
 
 from flask_admin.contrib.sqla import ModelView
+from wtforms.fields import FloatField
 from sqlalchemy.orm import Session
 from sqlalchemy.orm import scoped_session, sessionmaker
 
@@ -120,16 +121,27 @@ class RouteAdmin(SecureModelView):
 
 
 class SightingAdmin(SecureModelView):
-    column_list = ["id", "route_stop", "user", "operator", "direction", "crowd_level", "seen_at"]
-    column_filters = ["direction", "crowd_level", "seen_at"]
+    column_list = ["id", "route_stop", "user", "operator", "direction", "crowd_level", "is_trip_confirmation", "seen_at"]
+    column_filters = ["direction", "crowd_level", "is_trip_confirmation", "seen_at"]
     form_choices = {
         "direction": [("forward", "Forward"), ("return", "Return")],
            "crowd_level": [("empty", "Empty seats"), ("moderate", "Standing only"), ("packed", "Fully packed")]
     }
     can_create = False
+
+
+class RouteStopAdmin(SecureModelView):
+    column_list = ["id", "route", "stop", "stop_order", "avg_travel_seconds", "distance_km", "is_waypoint"]
+    form_columns = ["route", "stop", "stop_order", "avg_travel_seconds", "distance_km", "is_waypoint"]
+    form_overrides = {"distance_km": FloatField}
+    form_args = {"distance_km": {"label": "Distance (km)", "default": 0.0}}
+    column_filters = ["route", "is_waypoint"]
+
+
 class StopAdmin(SecureModelView):
     column_list = ["id", "name", "landmark", "routes_display"]
     column_searchable_list = ["name", "landmark"]
+    form_overrides = {"latitude": FloatField, "longitude": FloatField}
 
     column_formatters = {
         "routes_display": lambda v, c, m, p: ", ".join(
@@ -155,7 +167,7 @@ def init_admin(app):
     admin.add_view(OperatorAdmin(Operator, db_session, name="Operators"))
     admin.add_view(RouteAdmin(Route, db_session, name="Routes"))
     admin.add_view(StopAdmin(Stop, db_session, name="Stops"))
-    admin.add_view(SecureModelView(RouteStop, db_session, name="Route Stops"))
+    admin.add_view(RouteStopAdmin(RouteStop, db_session, name="Route Stops"))
     admin.add_view(SecureModelView(User, db_session, name="Users"))
     admin.add_view(SightingAdmin(Sighting, db_session, name="Sightings"))
     admin.add_view(SecureModelView(Feedback, db_session, name="Feedback"))

@@ -1,7 +1,124 @@
 import datetime
+import math
 from sqlalchemy import select
 from db import get_session
 from alchemy_models import RouteStop, Stop, Sighting, Route
+
+
+def haversine_km(lat1, lon1, lat2, lon2):
+    r = 6371.0
+    p1 = math.radians(lat1)
+    p2 = math.radians(lat2)
+    dp = math.radians(lat2 - lat1)
+    dl = math.radians(lon2 - lon1)
+    a = math.sin(dp / 2.0) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2.0) ** 2
+    return 2.0 * r * math.asin(min(1.0, math.sqrt(a)))
+
+
+def compute_hop_distances(route_stops):
+    ordered = sorted(route_stops, key=lambda rs: rs.stop_order)
+    distances = {}
+    for idx, rs in enumerate(ordered):
+        if idx == 0:
+            distances[rs.stop_order] = 0.0
+            continue
+        explicit_km = getattr(rs, "distance_km", None)
+        if explicit_km is not None and explicit_km > 0:
+            distances[rs.stop_order] = round(float(explicit_km), 2)
+            continue
+        prev_rs = ordered[idx - 1]
+        prev_stop = prev_rs.stop
+        curr_stop = rs.stop
+        if (
+            prev_stop and curr_stop
+            and prev_stop.latitude is not None and prev_stop.longitude is not None
+            and curr_stop.latitude is not None and curr_stop.longitude is not None
+        ):
+            road_km = haversine_km(
+                prev_stop.latitude, prev_stop.longitude,
+                curr_stop.latitude, curr_stop.longitude
+            ) * 1.18
+            distances[rs.stop_order] = round(max(0.2, road_km), 2)
+            continue
+        avg_sec = rs.avg_travel_seconds or 0
+        if avg_sec > 0:
+            distances[rs.stop_order] = round((avg_sec / 3600.0) * 38.0, 2)
+        else:
+            distances[rs.stop_order] = 0.0
+    return distances
+
+
+def span_sum(mapping, order_a, order_b):
+    min_o = min(order_a, order_b)
+    max_o = max(order_a, order_b)
+    return sum(val for order, val in mapping.items() if min_o < order <= max_o)
+
+
+def estimate_live_corridor_speed(sightings, hop_distances, travel_times, direction, curr_time):
+    fresh = []
+    for s_order, s_name, s_seen_at, s_user_id, s_rs_id, s_op_id, s_is_wp in sightings:
+        dt = datetime.datetime.fromisoformat(s_seen_at) if isinstance(s_seen_at, str) else s_seen_at
+        age_sec = (curr_time - dt).total_seconds()
+        if 0 <= age_sec <= 2700:
+            fresh.append((s_order, dt, s_user_id, s_op_id))
+
+    if len(fresh) < 2:
+        return None
+
+    best_sample = None
+    for i, (down_order, down_dt, down_uid, down_op) in enumerate(fresh):
+        if (curr_time - down_dt).total_seconds() > 2100:
+            continue
+        for j in range(i + 1, len(fresh)):
+            up_order, up_dt, up_uid, up_op = fresh[j]
+            is_valid_dir = (up_order > down_order) if direction == 'return' else (up_order < down_order)
+            if not is_valid_dir:
+                continue
+            dt_sec = (down_dt - up_dt).total_seconds()
+            if dt_sec < 60 or dt_sec > 2700:
+                continue
+            if down_op and up_op and down_op != up_op:
+                continue
+
+            seg_km = span_sum(hop_distances, up_order, down_order)
+            seg_base_sec = span_sum(travel_times, up_order, down_order)
+            if seg_km < 0.5 or seg_base_sec <= 0:
+                continue
+
+            speed_kmh = seg_km / (dt_sec / 3600.0)
+            ratio = dt_sec / float(seg_base_sec)
+            if not (6.0 <= speed_kmh <= 85.0 and 0.4 <= ratio <= 4.0):
+                continue
+
+            same_rider = bool(down_uid and up_uid and down_uid == up_uid)
+            base_speed_kmh = max(15.0, min(65.0, seg_km / (seg_base_sec / 3600.0)))
+            raw_pace = max(0.70, min(2.50, base_speed_kmh / speed_kmh))
+            blended_pace = round(0.35 + 0.65 * raw_pace, 3)
+
+            if speed_kmh < 20.0 or blended_pace >= 1.35:
+                traffic_status = "heavy"
+            elif speed_kmh < 32.0 or blended_pace >= 1.15:
+                traffic_status = "moderate"
+            else:
+                traffic_status = "smooth"
+
+            candidate = {
+                "live_speed_kmh": round(speed_kmh, 1),
+                "baseline_speed_kmh": round(base_speed_kmh, 1),
+                "pace_factor": blended_pace,
+                "traffic_status": traffic_status,
+                "same_rider": same_rider,
+                "recency_sec": (curr_time - down_dt).total_seconds()
+            }
+            if best_sample is None:
+                best_sample = candidate
+            elif candidate["same_rider"] and not best_sample["same_rider"] and candidate["recency_sec"] <= 1200:
+                best_sample = candidate
+            break
+        if best_sample and best_sample["same_rider"]:
+            break
+
+    return best_sample
 
 
 def get_corridor_slots():
@@ -155,13 +272,18 @@ def calculate_eta(route_stop_id, direction='forward'):
         if not route_stops:
             return {"status": "error", "message": "no route stops found"}, 404
 
-        first_order = route_stops[0].stop_order
-        last_order = route_stops[-1].stop_order
+        primary_stops = [rs for rs in route_stops if not getattr(rs, "is_waypoint", False)] or route_stops
+        first_order = primary_stops[0].stop_order
+        last_order = primary_stops[-1].stop_order
 
         stop_name = this_stop.stop.name if this_stop.stop else ""
         stop_name_lower = stop_name.lower()
+        is_this_waypoint = bool(getattr(this_stop, "is_waypoint", False))
 
-        if direction == 'return':
+        if is_this_waypoint:
+            is_origin = False
+            is_terminus = False
+        elif direction == 'return':
             is_origin = (user_stop_order == last_order) or ('delhi' in stop_name_lower or 'anand vihar' in stop_name_lower or 'kaushambi' in stop_name_lower)
             is_terminus = (user_stop_order == first_order) or ('hapur' in stop_name_lower)
         else:
@@ -175,12 +297,21 @@ def calculate_eta(route_stop_id, direction='forward'):
         slots_info = get_departure_slots_info(now_ist)
 
         travel_times = {rs.stop_order: (rs.avg_travel_seconds or 0) for rs in route_stops}
+        hop_distances = compute_hop_distances(route_stops)
 
         def is_beyond(order):
             return order < user_stop_order if direction == 'return' else order > user_stop_order
 
         stmt = (
-            select(RouteStop.stop_order, Stop.name, Sighting.seen_at, Sighting.user_id, RouteStop.id)
+            select(
+                RouteStop.stop_order,
+                Stop.name,
+                Sighting.seen_at,
+                Sighting.user_id,
+                RouteStop.id,
+                Sighting.operator_id,
+                RouteStop.is_waypoint
+            )
             .join(RouteStop, Sighting.route_stop_id == RouteStop.id)
             .join(Stop, RouteStop.stop_id == Stop.id)
             .where(
@@ -192,6 +323,9 @@ def calculate_eta(route_stop_id, direction='forward'):
         sightings = session.execute(stmt).all()
 
         curr_time = datetime.datetime.utcnow()
+        live_speed = estimate_live_corridor_speed(sightings, hop_distances, travel_times, direction, curr_time)
+        pace_factor = live_speed["pace_factor"] if live_speed else 1.0
+
         approaching_buses = []
         passed_sightings = []
         origin_sightings = []
@@ -199,7 +333,7 @@ def calculate_eta(route_stop_id, direction='forward'):
         freshest_seen_at = None
         seen_users = set()
 
-        for sighting_stop_order, s_stop_name, seen_at, user_id, s_rs_id in sightings:
+        for sighting_stop_order, s_stop_name, seen_at, user_id, s_rs_id, s_op_id, s_is_wp in sightings:
             if isinstance(seen_at, str):
                 seen_at_formatted = datetime.datetime.fromisoformat(seen_at)
             else:
@@ -231,16 +365,24 @@ def calculate_eta(route_stop_id, direction='forward'):
                 passed_sightings.append((elapsed, seen_at_formatted))
                 continue
 
-            min_order = min(sighting_stop_order, user_stop_order)
-            max_order = max(sighting_stop_order, user_stop_order)
-            remaining_seconds = sum(travel_times.get(k, 0) for k in range(min_order + 1, max_order + 1))
-            eta_seconds = remaining_seconds - elapsed
+            base_remaining_seconds = span_sum(travel_times, sighting_stop_order, user_stop_order)
+            adjusted_remaining = round(base_remaining_seconds * pace_factor)
+            eta_seconds = adjusted_remaining - elapsed
+            total_span_km = span_sum(hop_distances, sighting_stop_order, user_stop_order)
 
             if eta_seconds > 0:
+                if total_span_km > 0 and adjusted_remaining > 0:
+                    frac = max(0.0, min(1.0, eta_seconds / float(adjusted_remaining)))
+                    dist_away_km = round(max(0.1, total_span_km * frac), 1)
+                else:
+                    dist_away_km = None
+
                 approaching_buses.append({
                     "eta_seconds": int(eta_seconds),
                     "eta_minutes": max(1, round(eta_seconds / 60)),
                     "spotted_at": s_stop_name,
+                    "spotted_is_waypoint": bool(s_is_wp),
+                    "distance_km": dist_away_km,
                     "seen_ago_seconds": int(elapsed),
                     "seen_ago_minutes": max(0, round(elapsed / 60))
                 })
@@ -255,7 +397,7 @@ def calculate_eta(route_stop_id, direction='forward'):
         latest_evening_dep_time = None
         latest_evening_dep_offset = None
         origin_target_order = first_order if direction == 'forward' else last_order
-        for s_order, s_name, s_seen_at, _, _ in sightings:
+        for s_order, s_name, s_seen_at, _, _, _, _ in sightings:
             if s_order == origin_target_order:
                 dt = datetime.datetime.fromisoformat(s_seen_at) if isinstance(s_seen_at, str) else s_seen_at
                 ist = dt + datetime.timedelta(hours=5, minutes=30)
@@ -363,6 +505,10 @@ def calculate_eta(route_stop_id, direction='forward'):
                 "eta seconds": earliest["eta_seconds"],
                 "eta minutes": earliest["eta_minutes"],
                 "spotted at": earliest["spotted_at"],
+                "spotted_is_waypoint": earliest["spotted_is_waypoint"],
+                "distance_km": earliest["distance_km"],
+                "live_speed_kmh": live_speed["live_speed_kmh"] if live_speed else None,
+                "traffic_status": live_speed["traffic_status"] if live_speed else None,
                 "reports_count": fresh_sightings_count,
                 "seen_ago_minutes": earliest["seen_ago_minutes"],
                 "seen_ago_seconds": earliest["seen_ago_seconds"],
@@ -374,7 +520,8 @@ def calculate_eta(route_stop_id, direction='forward'):
                 subsequent = approaching_buses[1]
                 response["subsequent bus"] = {
                     "eta minutes": subsequent["eta_minutes"],
-                    "spotted at": subsequent["spotted_at"]
+                    "spotted at": subsequent["spotted_at"],
+                    "distance_km": subsequent["distance_km"]
                 }
 
             return response

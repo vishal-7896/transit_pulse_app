@@ -43,6 +43,9 @@ BADGES = [
     {"id": "round_tripper",  "name": "Round Tripper",   "icon": "round_tripper", "tier": "special",
      "metric": "directions", "target": 2,
      "description": "Spot buses heading both ways."},
+    {"id": "trip_finisher",  "name": "Trip Finisher",   "icon": "trip_finisher", "tier": "special",
+     "metric": "trip_confirmations", "target": 1,
+     "description": "Confirm arrival at a starred stop during a ride."},
 ]
 
 LEVELS = [
@@ -73,7 +76,7 @@ def _filter_plausible(rows):
     plausible = []
     last_seen = None
     last_stop = None
-    for seen_at, crowd_level, route_stop_id, direction in rows:
+    for seen_at, crowd_level, route_stop_id, direction, is_trip_conf in rows:
         local = _to_ist(seen_at)
         if 1 <= local.hour < 4:
             continue
@@ -82,12 +85,12 @@ def _filter_plausible(rows):
                 continue
         last_seen = seen_at
         last_stop = route_stop_id
-        plausible.append((seen_at, crowd_level, route_stop_id, direction))
+        plausible.append((seen_at, crowd_level, route_stop_id, direction, bool(is_trip_conf)))
     return plausible
 
 def _scan(rows):
     metrics = {"total": 0, "with_crowd": 0, "stops": 0, "directions": 0,
-               "best_streak": 0, "early": 0, "night": 0}
+               "best_streak": 0, "early": 0, "night": 0, "trip_confirmations": 0}
     timeline = {m: [] for m in metrics}
 
     def bump(metric, value, when):
@@ -100,10 +103,12 @@ def _scan(rows):
     last_day = None
     streak = 0
 
-    for seen_at, crowd_level, route_stop_id, direction in rows:
+    for seen_at, crowd_level, route_stop_id, direction, is_trip_conf in rows:
         bump("total", metrics["total"] + 1, seen_at)
         if crowd_level:
             bump("with_crowd", metrics["with_crowd"] + 1, seen_at)
+        if is_trip_conf:
+            bump("trip_confirmations", metrics["trip_confirmations"] + 1, seen_at)
 
         stop_ids.add(route_stop_id)
         bump("stops", len(stop_ids), seen_at)
@@ -145,7 +150,7 @@ def _current_streak(days, today):
 def evaluate(session, user_id):
     stmt = (
         select(Sighting.seen_at, Sighting.crowd_level,
-               Sighting.route_stop_id, Sighting.direction)
+               Sighting.route_stop_id, Sighting.direction, Sighting.is_trip_confirmation)
         .where(Sighting.user_id == user_id)
         .order_by(Sighting.seen_at, Sighting.id)
     )
@@ -165,6 +170,7 @@ def evaluate(session, user_id):
         "current_streak": _current_streak(days, today),
         "best_streak": metrics["best_streak"],
         "stops_covered": metrics["stops"],
+        "trip_confirmations": metrics["trip_confirmations"],
         "level": _level_for(metrics["total"]),
     }
 

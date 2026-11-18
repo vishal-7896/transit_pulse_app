@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from db import get_session
 from alchemy_models import Route, RouteStop, Sighting, User, Operator, UserFavorite, Stop, PredictionLog, Feedback, PosterScan
 import badges
-from eta import calculate_eta
+from eta import calculate_eta, compute_hop_distances, span_sum, estimate_live_corridor_speed
 from auth_middleware import require_auth
 from admin_views import init_admin
 
@@ -67,12 +67,15 @@ def get_stops(route_id):
             .order_by(RouteStop.stop_order)
         )
         route_stops = session.scalars(stmt).all()
+        hop_distances = compute_hop_distances(route_stops)
         return jsonify([{
             "route_stop_id": rs.id,
             "stop_order": rs.stop_order,
             "name": rs.stop.name,
             "landmark": rs.stop.landmark,
-            "avg_travel_seconds": rs.avg_travel_seconds
+            "avg_travel_seconds": rs.avg_travel_seconds,
+            "distance_km": hop_distances.get(rs.stop_order, 0.0),
+            "is_waypoint": bool(getattr(rs, "is_waypoint", False))
         } for rs in route_stops])
 
 
@@ -123,61 +126,206 @@ def get_operators():
         } for op in operators])
 
 
-def update_adaptive_travel_time(session, current_rs, sighting, alpha=0.2):
-    try:
-        if sighting.direction == 'return':
-            prev_order = current_rs.stop_order + 1
-        else:
-            prev_order = current_rs.stop_order - 1
+def check_speed_anti_cheat(session, user_id, current_rs, hop_distances, now_utc):
+    thirty_min_ago = now_utc - timedelta(minutes=30)
+    row = session.execute(
+        select(Sighting, RouteStop)
+        .join(RouteStop, Sighting.route_stop_id == RouteStop.id)
+        .where(
+            Sighting.user_id == user_id,
+            RouteStop.route_id == current_rs.route_id,
+            Sighting.seen_at > thirty_min_ago
+        )
+        .order_by(Sighting.seen_at.desc())
+    ).first()
 
-        if prev_order < 1:
+    if not row:
+        return True, None
+
+    last_sighting, last_rs = row
+    if last_rs.stop_order == current_rs.stop_order:
+        return True, None
+
+    dist_km = span_sum(hop_distances, last_rs.stop_order, current_rs.stop_order)
+    dt_sec = (now_utc - last_sighting.seen_at).total_seconds()
+    if dist_km > 0.5 and dt_sec > 0:
+        implied_kmh = dist_km / (dt_sec / 3600.0)
+        if implied_kmh > 110.0:
+            return False, round(implied_kmh, 1)
+
+    return True, None
+
+
+def update_adaptive_travel_time(session, current_rs, sighting, route_stops, hop_distances, now_utc, alpha=0.2):
+    try:
+        ordered = sorted(route_stops, key=lambda rs: rs.stop_order)
+        curr_idx = next((i for i, rs in enumerate(ordered) if rs.id == current_rs.id), None)
+        if curr_idx is None:
             return
 
+        if sighting.direction == 'return':
+            candidate_stops = ordered[curr_idx + 1: curr_idx + 4]
+        else:
+            start_i = max(0, curr_idx - 3)
+            candidate_stops = list(reversed(ordered[start_i: curr_idx]))
+
+        if not candidate_stops:
+            return
+
+        candidate_ids = [rs.id for rs in candidate_stops]
         stmt = (
-            select(Sighting)
-            .join(RouteStop)
+            select(Sighting, RouteStop)
+            .join(RouteStop, Sighting.route_stop_id == RouteStop.id)
             .where(
-                RouteStop.route_id == current_rs.route_id,
-                RouteStop.stop_order == prev_order,
+                RouteStop.id.in_(candidate_ids),
                 Sighting.direction == sighting.direction,
-                Sighting.seen_at > datetime.utcnow() - timedelta(minutes=45)
+                Sighting.seen_at > now_utc - timedelta(minutes=45)
             )
+            .order_by(Sighting.seen_at.desc())
         )
         if sighting.operator_id:
             stmt = stmt.where(Sighting.operator_id == sighting.operator_id)
 
-        prev_sighting = session.scalars(stmt.order_by(Sighting.seen_at.desc())).first()
-
-        if not prev_sighting:
+        rows = session.execute(stmt).all()
+        if not rows:
             return
 
-        delta_seconds = (datetime.utcnow() - prev_sighting.seen_at).total_seconds()
+        chosen = None
+        if getattr(sighting, "is_trip_confirmation", False):
+            for s_obj, rs_obj in rows:
+                if s_obj.user_id == sighting.user_id:
+                    chosen = (s_obj, rs_obj)
+                    break
+        if chosen is None:
+            chosen = rows[0]
 
-        if 60 <= delta_seconds <= 2700:
-            segment_order = max(current_rs.stop_order, prev_order)
-            target_rs = current_rs if current_rs.stop_order == segment_order else session.scalars(
-                select(RouteStop).where(
-                    RouteStop.route_id == current_rs.route_id,
-                    RouteStop.stop_order == segment_order
-                )
-            ).first()
+        prev_sighting, prev_rs = chosen
+        delta_seconds = (now_utc - prev_sighting.seen_at).total_seconds()
+        if not (60 <= delta_seconds <= 2700):
+            return
 
-            if target_rs:
-                old_avg = target_rs.avg_travel_seconds or delta_seconds
-                new_avg = round((1 - alpha) * old_avg + alpha * delta_seconds)
-                target_rs.avg_travel_seconds = int(new_avg)
+        span_km = span_sum(hop_distances, prev_rs.stop_order, current_rs.stop_order)
+        if span_km >= 0.5:
+            seg_speed = span_km / (delta_seconds / 3600.0)
+            if not (8.0 <= seg_speed <= 95.0):
+                return
+
+        min_o = min(prev_rs.stop_order, current_rs.stop_order)
+        max_o = max(prev_rs.stop_order, current_rs.stop_order)
+        hop_rows = [rs for rs in ordered if min_o < rs.stop_order <= max_o]
+        if not hop_rows:
+            return
+
+        if len(hop_rows) == 1:
+            target_rs = hop_rows[0]
+            old_avg = target_rs.avg_travel_seconds or delta_seconds
+            target_rs.avg_travel_seconds = int(round((1 - alpha) * old_avg + alpha * delta_seconds))
+            return
+
+        weights = [
+            float(rs.avg_travel_seconds) if (rs.avg_travel_seconds and rs.avg_travel_seconds > 0)
+            else max(0.5, float(hop_distances.get(rs.stop_order, 1.0)))
+            for rs in hop_rows
+        ]
+        total_weight = sum(weights)
+        if total_weight <= 0:
+            return
+
+        for rs, w in zip(hop_rows, weights):
+            hop_obs = delta_seconds * (w / total_weight)
+            old_avg = rs.avg_travel_seconds or hop_obs
+            rs.avg_travel_seconds = int(round((1 - alpha) * old_avg + alpha * hop_obs))
     except Exception as e:
         print(f"Adaptive travel update notice: {e}")
+
+
+def build_active_trip(session, user_id, current_rs, direction, operator_id, route_stops, hop_distances, now_utc):
+    try:
+        fav_rows = session.execute(
+            select(RouteStop, Stop)
+            .join(UserFavorite, UserFavorite.route_stop_id == RouteStop.id)
+            .join(Stop, RouteStop.stop_id == Stop.id)
+            .where(
+                UserFavorite.user_id == user_id,
+                RouteStop.route_id == current_rs.route_id
+            )
+        ).all()
+
+        downstream = []
+        for fav_rs, fav_stop in fav_rows:
+            if direction == 'return' and fav_rs.stop_order < current_rs.stop_order:
+                downstream.append((fav_rs, fav_stop))
+            elif direction != 'return' and fav_rs.stop_order > current_rs.stop_order:
+                downstream.append((fav_rs, fav_stop))
+
+        if not downstream:
+            return None
+
+        downstream.sort(key=lambda pair: abs(pair[0].stop_order - current_rs.stop_order))
+        target_rs, target_stop = downstream[0]
+
+        travel_times = {rs.stop_order: (rs.avg_travel_seconds or 0) for rs in route_stops}
+        base_sec = span_sum(travel_times, current_rs.stop_order, target_rs.stop_order)
+        dist_km = round(span_sum(hop_distances, current_rs.stop_order, target_rs.stop_order), 1)
+
+        recent_sightings = session.execute(
+            select(
+                RouteStop.stop_order,
+                Stop.name,
+                Sighting.seen_at,
+                Sighting.user_id,
+                RouteStop.id,
+                Sighting.operator_id,
+                RouteStop.is_waypoint
+            )
+            .join(RouteStop, Sighting.route_stop_id == RouteStop.id)
+            .join(Stop, RouteStop.stop_id == Stop.id)
+            .where(
+                RouteStop.route_id == current_rs.route_id,
+                Sighting.direction == direction,
+                Sighting.seen_at > now_utc - timedelta(minutes=45)
+            )
+            .order_by(Sighting.seen_at.desc())
+        ).all()
+
+        live_speed = estimate_live_corridor_speed(recent_sightings, hop_distances, travel_times, direction, now_utc)
+        pace_factor = live_speed["pace_factor"] if live_speed else 1.0
+
+        est_sec = max(120, int(round(base_sec * pace_factor))) if base_sec > 0 else 600
+        if est_sec <= 240:
+            prompt_after_sec = max(60, int(est_sec * 0.70))
+        else:
+            prompt_after_sec = max(90, min(est_sec - 120, int(est_sec * 0.80)))
+
+        route_obj = session.get(Route, current_rs.route_id)
+        return {
+            "route_id": current_rs.route_id,
+            "route_name": route_obj.name if route_obj else "",
+            "direction": direction,
+            "operator_id": operator_id,
+            "boarded_stop_id": current_rs.id,
+            "boarded_stop_name": current_rs.stop.name if current_rs.stop else "",
+            "boarded_at": now_utc.isoformat() + "Z",
+            "target_stop_id": target_rs.id,
+            "target_stop_name": target_stop.name,
+            "estimated_travel_seconds": est_sec,
+            "distance_km": dist_km if dist_km > 0 else None,
+            "prompt_after_seconds": prompt_after_sec
+        }
+    except Exception as e:
+        print(f"Active trip lookup notice: {e}")
+        return None
 
 
 @app.route('/sighting', methods=['POST'])
 @require_auth
 def post_sighting():
-    data = request.get_json()
+    data = request.get_json() or {}
     route_stop_id = data.get('route_stop_id')
     direction = data.get('direction', 'forward')
     crowd_level = data.get('crowd_level')
     operator_id = data.get('operator_id')
+    is_trip_confirmation = bool(data.get('is_trip_confirmation', False))
     user_id = g.current_user['id']
 
     if not route_stop_id or not user_id:
@@ -188,7 +336,8 @@ def post_sighting():
         if not current_rs:
             return jsonify({"error": "stop not found"}), 404
 
-        three_min_ago = datetime.utcnow() - timedelta(minutes=3)
+        now_utc = datetime.utcnow()
+        three_min_ago = now_utc - timedelta(minutes=3)
         stmt = (
             select(Sighting)
             .join(RouteStop)
@@ -197,17 +346,37 @@ def post_sighting():
                 RouteStop.route_id == current_rs.route_id,
                 Sighting.seen_at > three_min_ago
             )
+            .order_by(Sighting.seen_at.desc())
         )
         recent = session.scalars(stmt).first()
 
         if recent:
-            return jsonify({"error": "too many requests"}), 429
+            allow_trip_confirm = (
+                is_trip_confirmation
+                and recent.route_stop_id != route_stop_id
+                and (now_utc - recent.seen_at).total_seconds() >= 60
+            )
+            if not allow_trip_confirm:
+                return jsonify({"error": "too many requests"}), 429
 
-        ist_now = datetime.utcnow() + timedelta(hours=5, minutes=30)
+        ist_now = now_utc + timedelta(hours=5, minutes=30)
         if 1 <= ist_now.hour < 4:
             return jsonify({"error": "Sightings are paused between 1:00 AM and 4:00 AM IST."}), 400
 
-        
+        route_stops = session.scalars(
+            select(RouteStop)
+            .where(RouteStop.route_id == current_rs.route_id)
+            .order_by(RouteStop.stop_order)
+        ).all()
+        hop_distances = compute_hop_distances(route_stops)
+
+        speed_ok, implied_kmh = check_speed_anti_cheat(session, user_id, current_rs, hop_distances, now_utc)
+        if not speed_ok:
+            return jsonify({
+                "error": "Sighting rejected: physically impossible travel speed detected.",
+                "implied_speed_kmh": implied_kmh
+            }), 400
+
         try:
             _, badges_before = badges.evaluate(session, user_id)
             earned_before = badges.earned_ids(badges_before)
@@ -220,14 +389,15 @@ def post_sighting():
             route_stop_id=route_stop_id,
             direction=direction,
             crowd_level=crowd_level,
-            operator_id=operator_id
+            operator_id=operator_id,
+            is_trip_confirmation=is_trip_confirmation
         )
         session.add(sighting)
 
-        update_adaptive_travel_time(session, current_rs, sighting)
+        update_adaptive_travel_time(session, current_rs, sighting, route_stops, hop_distances, now_utc)
 
         try:
-            window_start = datetime.utcnow() - timedelta(minutes=60)
+            window_start = now_utc - timedelta(minutes=60)
             pending_logs = session.scalars(
                 select(PredictionLog).where(
                     PredictionLog.route_stop_id == route_stop_id,
@@ -237,7 +407,7 @@ def post_sighting():
                 )
             ).all()
             for pl in pending_logs:
-                pl.actual_arrival_at = sighting.seen_at or datetime.utcnow()
+                pl.actual_arrival_at = sighting.seen_at or now_utc
                 actual_diff = (pl.actual_arrival_at - pl.predicted_at).total_seconds() / 60.0
                 pl.error_minutes = round(abs(pl.predicted_eta_minutes - actual_diff), 2)
         except Exception as e:
@@ -245,7 +415,6 @@ def post_sighting():
 
         session.commit()
 
-        
         new_badges = []
         if earned_before is not None:
             try:
@@ -255,7 +424,15 @@ def post_sighting():
             except Exception as e:
                 print(f"Badge check (after) notice: {e}")
 
-        return jsonify({"status": "ok", "new_badges": new_badges})
+        active_trip = build_active_trip(
+            session, user_id, current_rs, direction, operator_id, route_stops, hop_distances, now_utc
+        )
+
+        return jsonify({
+            "status": "ok",
+            "new_badges": new_badges,
+            "active_trip": active_trip
+        })
 
 
 @app.route('/profile', methods=['GET'])

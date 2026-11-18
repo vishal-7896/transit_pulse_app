@@ -1,14 +1,13 @@
 from typing import Optional, List
 from datetime import datetime
 
-from sqlalchemy import create_engine, String, Integer, Float, ForeignKey, CheckConstraint, func
+from sqlalchemy import create_engine, String, Integer, Float, Boolean, ForeignKey, CheckConstraint, func, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 class Base(DeclarativeBase):
     pass
 
 class Operator(Base):
-    """Reference list only — seeded by admin, selected by users during sighting."""
     __tablename__ = "operator"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -53,6 +52,8 @@ class RouteStop(Base):
     stop_id: Mapped[int] = mapped_column(ForeignKey("stop.id"))
     stop_order: Mapped[int] = mapped_column(Integer)
     avg_travel_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    distance_km: Mapped[float] = mapped_column(Float, default=0.0)
+    is_waypoint: Mapped[bool] = mapped_column(Boolean, default=False)
 
     route: Mapped["Route"] = relationship(back_populates="route_stops")
     stop: Mapped["Stop"] = relationship(back_populates="route_stops")
@@ -112,6 +113,7 @@ class Sighting(Base):
     seen_at: Mapped[datetime] = mapped_column(default=func.now())
     direction: Mapped[Optional[str]] = mapped_column(String)
     crowd_level: Mapped[Optional[str]] = mapped_column(String)
+    is_trip_confirmation: Mapped[bool] = mapped_column(Boolean, default=False)
 
     __table_args__ = (
         CheckConstraint("direction IN ('forward', 'return')", name="check_direction"),
@@ -144,3 +146,31 @@ elif DATABASE_URL.startswith("postgresql://") and not DATABASE_URL.startswith("p
 engine = create_engine(DATABASE_URL,pool_pre_ping=True,
     pool_recycle=300)
 Base.metadata.create_all(engine)
+
+def ensure_schema_columns(target_engine):
+    inspector = inspect(target_engine)
+    is_sqlite = target_engine.dialect.name == "sqlite"
+    with target_engine.begin() as conn:
+        if inspector.has_table("route_stop"):
+            rs_cols = {c["name"] for c in inspector.get_columns("route_stop")}
+            if "distance_km" not in rs_cols:
+                col_type = "REAL DEFAULT 0.0" if is_sqlite else "DOUBLE PRECISION DEFAULT 0.0"
+                conn.execute(text(f"ALTER TABLE route_stop ADD COLUMN distance_km {col_type}"))
+            if "is_waypoint" not in rs_cols:
+                col_type = "BOOLEAN DEFAULT 0" if is_sqlite else "BOOLEAN DEFAULT FALSE"
+                conn.execute(text(f"ALTER TABLE route_stop ADD COLUMN is_waypoint {col_type}"))
+        if inspector.has_table("sighting"):
+            s_cols = {c["name"] for c in inspector.get_columns("sighting")}
+            if "operator_id" not in s_cols:
+                conn.execute(text("ALTER TABLE sighting ADD COLUMN operator_id INTEGER"))
+            if "crowd_level" not in s_cols:
+                conn.execute(text("ALTER TABLE sighting ADD COLUMN crowd_level VARCHAR"))
+            if "is_trip_confirmation" not in s_cols:
+                col_type = "BOOLEAN DEFAULT 0" if is_sqlite else "BOOLEAN DEFAULT FALSE"
+                conn.execute(text(f"ALTER TABLE sighting ADD COLUMN is_trip_confirmation {col_type}"))
+        if inspector.has_table("user"):
+            u_cols = {c["name"] for c in inspector.get_columns("user")}
+            if "firebase_uid" not in u_cols:
+                conn.execute(text("ALTER TABLE user ADD COLUMN firebase_uid VARCHAR"))
+
+ensure_schema_columns(engine)
