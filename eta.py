@@ -54,9 +54,16 @@ def span_sum(mapping, order_a, order_b):
     return sum(val for order, val in mapping.items() if min_o < order <= max_o)
 
 
+SERVICE_TYPE_LABELS = {
+    "shuttle": "Kaushambi Shuttle",
+    "long_haul": "Anand Vihar Long-Haul"
+}
+
+
 def estimate_live_corridor_speed(sightings, hop_distances, travel_times, direction, curr_time):
     fresh = []
-    for s_order, s_name, s_seen_at, s_user_id, s_rs_id, s_op_id, s_is_wp in sightings:
+    for row in sightings:
+        s_order, s_name, s_seen_at, s_user_id, s_rs_id, s_op_id, s_is_wp = row[:7]
         dt = datetime.datetime.fromisoformat(s_seen_at) if isinstance(s_seen_at, str) else s_seen_at
         age_sec = (curr_time - dt).total_seconds()
         if 0 <= age_sec <= 2700:
@@ -310,7 +317,8 @@ def calculate_eta(route_stop_id, direction='forward'):
                 Sighting.user_id,
                 RouteStop.id,
                 Sighting.operator_id,
-                RouteStop.is_waypoint
+                RouteStop.is_waypoint,
+                Sighting.service_type
             )
             .join(RouteStop, Sighting.route_stop_id == RouteStop.id)
             .join(Stop, RouteStop.stop_id == Stop.id)
@@ -333,7 +341,7 @@ def calculate_eta(route_stop_id, direction='forward'):
         freshest_seen_at = None
         seen_users = set()
 
-        for sighting_stop_order, s_stop_name, seen_at, user_id, s_rs_id, s_op_id, s_is_wp in sightings:
+        for sighting_stop_order, s_stop_name, seen_at, user_id, s_rs_id, s_op_id, s_is_wp, s_service_type in sightings:
             if isinstance(seen_at, str):
                 seen_at_formatted = datetime.datetime.fromisoformat(seen_at)
             else:
@@ -366,7 +374,8 @@ def calculate_eta(route_stop_id, direction='forward'):
                 continue
 
             base_remaining_seconds = span_sum(travel_times, sighting_stop_order, user_stop_order)
-            adjusted_remaining = round(base_remaining_seconds * pace_factor)
+            service_factor = 0.92 if s_service_type == "long_haul" else 1.0
+            adjusted_remaining = round(base_remaining_seconds * pace_factor * service_factor)
             eta_seconds = adjusted_remaining - elapsed
             total_span_km = span_sum(hop_distances, sighting_stop_order, user_stop_order)
 
@@ -382,6 +391,8 @@ def calculate_eta(route_stop_id, direction='forward'):
                     "eta_minutes": max(1, round(eta_seconds / 60)),
                     "spotted_at": s_stop_name,
                     "spotted_is_waypoint": bool(s_is_wp),
+                    "service_type": s_service_type,
+                    "service_type_label": SERVICE_TYPE_LABELS.get(s_service_type),
                     "distance_km": dist_away_km,
                     "seen_ago_seconds": int(elapsed),
                     "seen_ago_minutes": max(0, round(elapsed / 60))
@@ -393,11 +404,12 @@ def calculate_eta(route_stop_id, direction='forward'):
         seen_ago_minutes = max(0, round(seen_ago_seconds / 60))
 
         upcoming_str = ("Upcoming: " + " · ".join(slots_info["upcoming_slots"])) if (slots_info and slots_info.get("upcoming_slots")) else ""
-        origin_name_label = "Hapur" if direction == 'forward' else "Delhi"
+        origin_name_label = "Hapur" if direction == 'forward' else "Delhi (Anand Vihar / Kaushambi)"
         latest_evening_dep_time = None
         latest_evening_dep_offset = None
         origin_target_order = first_order if direction == 'forward' else last_order
-        for s_order, s_name, s_seen_at, _, _, _, _ in sightings:
+        for row in sightings:
+            s_order, s_name, s_seen_at = row[0], row[1], row[2]
             if s_order == origin_target_order:
                 dt = datetime.datetime.fromisoformat(s_seen_at) if isinstance(s_seen_at, str) else s_seen_at
                 ist = dt + datetime.timedelta(hours=5, minutes=30)
@@ -506,6 +518,8 @@ def calculate_eta(route_stop_id, direction='forward'):
                 "eta minutes": earliest["eta_minutes"],
                 "spotted at": earliest["spotted_at"],
                 "spotted_is_waypoint": earliest["spotted_is_waypoint"],
+                "service_type": earliest["service_type"],
+                "service_type_label": earliest["service_type_label"],
                 "distance_km": earliest["distance_km"],
                 "live_speed_kmh": live_speed["live_speed_kmh"] if live_speed else None,
                 "traffic_status": live_speed["traffic_status"] if live_speed else None,
@@ -521,6 +535,8 @@ def calculate_eta(route_stop_id, direction='forward'):
                 response["subsequent bus"] = {
                     "eta minutes": subsequent["eta_minutes"],
                     "spotted at": subsequent["spotted_at"],
+                    "service_type": subsequent["service_type"],
+                    "service_type_label": subsequent["service_type_label"],
                     "distance_km": subsequent["distance_km"]
                 }
 

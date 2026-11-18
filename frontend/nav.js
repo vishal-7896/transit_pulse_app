@@ -187,6 +187,7 @@
       route_name: serverTrip.route_name || "",
       direction: serverTrip.direction || "forward",
       operator_id: serverTrip.operator_id || null,
+      service_type: serverTrip.service_type || null,
       boarded_stop_id: serverTrip.boarded_stop_id,
       boarded_stop_name: serverTrip.boarded_stop_name || "",
       target_stop_id: serverTrip.target_stop_id,
@@ -296,6 +297,7 @@
         route_stop_id: trip.target_stop_id,
         direction: trip.direction,
         operator_id: trip.operator_id || null,
+        service_type: trip.service_type || null,
         is_trip_confirmation: true
       });
       var stopName = trip.target_stop_name || "your stop";

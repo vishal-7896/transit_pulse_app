@@ -175,6 +175,7 @@ h3 { font-weight: 700; }
 .direction-button:hover { border-color: var(--muted); }
 .direction-button:active { transform: translateY(1px); }
 .direction-button.is-active { background: var(--paper); border-color: var(--paper); color: var(--ink); }
+.direction-terminus-note { margin-top: 10px; font-size: 12.5px; line-height: 1.35; color: var(--muted); }
 .stops-section { margin-top: 36px; }
 .route-section-head { margin-bottom: 12px; }
 .stops-list { position: relative; }

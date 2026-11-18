@@ -53,6 +53,28 @@
     var confirmTripParam = params.get("confirm_trip") === "1";
     var showWaypoints = false;
 
+    function isDelhiCorridor() {
+      var low = String(routeName || "").toLowerCase();
+      return low.indexOf("delhi") !== -1 || low.indexOf("kaushambi") !== -1 || low.indexOf("anand vihar") !== -1;
+    }
+
+    function updateDirectionTerminusNote() {
+      var dirCard = document.querySelector(".direction-card");
+      if (!dirCard || !isDelhiCorridor()) return;
+      var note = document.getElementById("direction-terminus-note");
+      if (!note) {
+        note = document.createElement("p");
+        note.id = "direction-terminus-note";
+        note.className = "direction-terminus-note";
+        dirCard.appendChild(note);
+      }
+      if (selectedDirection === "return") {
+        note.textContent = "From Delhi (Anand Vihar / Kaushambi) · Shuttles & long-haul buses";
+      } else {
+        note.textContent = "Terminus: Delhi (Anand Vihar / Kaushambi) · Shuttles & long-haul buses";
+      }
+    }
+
     var tickTimer = null;
     var refetchTimer = null;
     var countdownStopId = null;
@@ -345,6 +367,9 @@
 
     function buildLiveMetaText(eta) {
       var parts = [];
+      if (eta.service_type_label) {
+        parts.push(eta.service_type_label);
+      }
       var speed = Number(eta.live_speed_kmh);
       if (eta.traffic_status === "heavy" && isFinite(speed) && speed > 0) {
         parts.push("Slow traffic (" + Math.round(speed) + " km/h)");
@@ -890,6 +915,7 @@
       document.querySelectorAll(".eta-value").forEach(function (value) {
         value.textContent = "—";
       });
+      updateDirectionTerminusNote();
       updateStopRoles();
     }
 
@@ -1025,7 +1051,7 @@
         }
         etaValue.textContent = "NO BUS";
         etaValue.classList.add("has-clock");
-        var originLabel = selectedDirection === "return" ? "Delhi" : "Hapur";
+        var originLabel = selectedDirection === "return" ? "Delhi (Anand Vihar / Kaushambi)" : "Hapur";
         var defMeta = role === "start_terminus"
           ? "Last bus from depot departs by 8:00 PM"
           : (role === "final_terminus" ? "Last bus terminates here by ~9:30 PM" : "Last bus from " + originLabel + " departs by 8:00 PM");

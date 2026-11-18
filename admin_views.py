@@ -121,11 +121,12 @@ class RouteAdmin(SecureModelView):
 
 
 class SightingAdmin(SecureModelView):
-    column_list = ["id", "route_stop", "user", "operator", "direction", "crowd_level", "is_trip_confirmation", "seen_at"]
-    column_filters = ["direction", "crowd_level", "is_trip_confirmation", "seen_at"]
+    column_list = ["id", "route_stop", "user", "operator", "direction", "service_type", "crowd_level", "is_trip_confirmation", "seen_at"]
+    column_filters = ["direction", "service_type", "crowd_level", "is_trip_confirmation", "seen_at"]
     form_choices = {
         "direction": [("forward", "Forward"), ("return", "Return")],
-           "crowd_level": [("empty", "Empty seats"), ("moderate", "Standing only"), ("packed", "Fully packed")]
+        "service_type": [("shuttle", "Kaushambi Shuttle"), ("long_haul", "Anand Vihar Long-Haul")],
+        "crowd_level": [("empty", "Empty seats"), ("moderate", "Standing only"), ("packed", "Fully packed")]
     }
     can_create = False
 

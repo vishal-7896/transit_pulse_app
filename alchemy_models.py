@@ -113,6 +113,7 @@ class Sighting(Base):
     seen_at: Mapped[datetime] = mapped_column(default=func.now())
     direction: Mapped[Optional[str]] = mapped_column(String)
     crowd_level: Mapped[Optional[str]] = mapped_column(String)
+    service_type: Mapped[Optional[str]] = mapped_column(String, default=None)
     is_trip_confirmation: Mapped[bool] = mapped_column(Boolean, default=False)
 
     __table_args__ = (
@@ -165,6 +166,8 @@ def ensure_schema_columns(target_engine):
                 conn.execute(text("ALTER TABLE sighting ADD COLUMN operator_id INTEGER"))
             if "crowd_level" not in s_cols:
                 conn.execute(text("ALTER TABLE sighting ADD COLUMN crowd_level VARCHAR"))
+            if "service_type" not in s_cols:
+                conn.execute(text("ALTER TABLE sighting ADD COLUMN service_type VARCHAR"))
             if "is_trip_confirmation" not in s_cols:
                 col_type = "BOOLEAN DEFAULT 0" if is_sqlite else "BOOLEAN DEFAULT FALSE"
                 conn.execute(text(f"ALTER TABLE sighting ADD COLUMN is_trip_confirmation {col_type}"))

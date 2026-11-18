@@ -46,6 +46,24 @@ def home():
     return send_from_directory(FRONTEND_DIR, 'index.html')
 
 
+def format_delhi_terminus(name):
+    if not name:
+        return name
+    low = name.strip().lower()
+    if low in ("delhi", "kaushambi", "anand vihar", "anand vihar isbt", "anand vihar / kaushambi", "delhi (anand vihar / kaushambi)"):
+        return "Delhi (Anand Vihar / Kaushambi)"
+    return name
+
+
+def format_delhi_landmark(name, landmark):
+    if not name:
+        return landmark
+    low = name.strip().lower()
+    if low in ("delhi", "kaushambi", "anand vihar", "anand vihar isbt", "anand vihar / kaushambi", "delhi (anand vihar / kaushambi)"):
+        return "Anand Vihar ISBT · Kaushambi Metro"
+    return landmark
+
+
 @app.route('/routes', methods=['GET'])
 def get_route():
     with get_session() as session:
@@ -53,8 +71,8 @@ def get_route():
         return jsonify([{
             "id": r.id,
             "name": r.name,
-            "start_terminus": r.start_terminus,
-            "stop_terminus": r.stop_terminus
+            "start_terminus": format_delhi_terminus(r.start_terminus),
+            "stop_terminus": format_delhi_terminus(r.stop_terminus)
         } for r in routes])
 
 
@@ -71,8 +89,8 @@ def get_stops(route_id):
         return jsonify([{
             "route_stop_id": rs.id,
             "stop_order": rs.stop_order,
-            "name": rs.stop.name,
-            "landmark": rs.stop.landmark,
+            "name": format_delhi_terminus(rs.stop.name),
+            "landmark": format_delhi_landmark(rs.stop.name, rs.stop.landmark),
             "avg_travel_seconds": rs.avg_travel_seconds,
             "distance_km": hop_distances.get(rs.stop_order, 0.0),
             "is_waypoint": bool(getattr(rs, "is_waypoint", False))
@@ -239,7 +257,7 @@ def update_adaptive_travel_time(session, current_rs, sighting, route_stops, hop_
         print(f"Adaptive travel update notice: {e}")
 
 
-def build_active_trip(session, user_id, current_rs, direction, operator_id, route_stops, hop_distances, now_utc):
+def build_active_trip(session, user_id, current_rs, direction, operator_id, service_type, route_stops, hop_distances, now_utc):
     try:
         fav_rows = session.execute(
             select(RouteStop, Stop)
@@ -290,8 +308,9 @@ def build_active_trip(session, user_id, current_rs, direction, operator_id, rout
 
         live_speed = estimate_live_corridor_speed(recent_sightings, hop_distances, travel_times, direction, now_utc)
         pace_factor = live_speed["pace_factor"] if live_speed else 1.0
+        service_factor = 0.92 if service_type == "long_haul" else 1.0
 
-        est_sec = max(120, int(round(base_sec * pace_factor))) if base_sec > 0 else 600
+        est_sec = max(120, int(round(base_sec * pace_factor * service_factor))) if base_sec > 0 else 600
         if est_sec <= 240:
             prompt_after_sec = max(60, int(est_sec * 0.70))
         else:
@@ -303,11 +322,12 @@ def build_active_trip(session, user_id, current_rs, direction, operator_id, rout
             "route_name": route_obj.name if route_obj else "",
             "direction": direction,
             "operator_id": operator_id,
+            "service_type": service_type,
             "boarded_stop_id": current_rs.id,
-            "boarded_stop_name": current_rs.stop.name if current_rs.stop else "",
+            "boarded_stop_name": format_delhi_terminus(current_rs.stop.name) if current_rs.stop else "",
             "boarded_at": now_utc.isoformat() + "Z",
             "target_stop_id": target_rs.id,
-            "target_stop_name": target_stop.name,
+            "target_stop_name": format_delhi_terminus(target_stop.name),
             "estimated_travel_seconds": est_sec,
             "distance_km": dist_km if dist_km > 0 else None,
             "prompt_after_seconds": prompt_after_sec
@@ -325,6 +345,8 @@ def post_sighting():
     direction = data.get('direction', 'forward')
     crowd_level = data.get('crowd_level')
     operator_id = data.get('operator_id')
+    raw_service_type = data.get('service_type')
+    service_type = raw_service_type if raw_service_type in ('shuttle', 'long_haul') else None
     is_trip_confirmation = bool(data.get('is_trip_confirmation', False))
     user_id = g.current_user['id']
 
@@ -390,6 +412,7 @@ def post_sighting():
             direction=direction,
             crowd_level=crowd_level,
             operator_id=operator_id,
+            service_type=service_type,
             is_trip_confirmation=is_trip_confirmation
         )
         session.add(sighting)
@@ -425,7 +448,7 @@ def post_sighting():
                 print(f"Badge check (after) notice: {e}")
 
         active_trip = build_active_trip(
-            session, user_id, current_rs, direction, operator_id, route_stops, hop_distances, now_utc
+            session, user_id, current_rs, direction, operator_id, service_type, route_stops, hop_distances, now_utc
         )
 
         return jsonify({
@@ -579,8 +602,8 @@ def get_favorites():
             "route_stop_id": rs.id,
             "route_id": r.id,
             "route_name": r.name,
-            "name": s.name,
-            "landmark": s.landmark
+            "name": format_delhi_terminus(s.name),
+            "landmark": format_delhi_landmark(s.name, s.landmark)
         } for rs, r, s in rows])
 
 
