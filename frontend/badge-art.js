@@ -1,12 +1,8 @@
-// badge-art.js: draws each badge as a rubber stamp (SVG). Shared by the profile page and the
-// "badge unlocked" popup. Everything here is static markup built from our own constants;
-// no user text is ever put into it.
 (function () {
   "use strict";
 
   var NS = "http://www.w3.org/2000/svg";
 
-  // 24px stroke glyphs
   var GLYPHS = {
     eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
     bus: '<rect x="3" y="3" width="18" height="15" rx="3"/><line x1="3" y1="11" x2="21" y2="11"/><circle cx="7.5" cy="15" r="1"/><circle cx="16.5" cy="15" r="1"/><line x1="6" y1="18" x2="6" y2="21"/><line x1="18" y1="18" x2="18" y2="21"/>',
@@ -20,10 +16,10 @@
     users: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.9"/><path d="M16 3.1a4 4 0 0 1 0 7.8"/>',
     compass: '<circle cx="12" cy="12" r="10"/><polygon points="16.2 7.8 14.1 14.1 7.8 16.2 9.9 9.9 16.2 7.8"/>',
     repeat: '<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>',
+    flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>',
     award2: '<circle cx="12" cy="12" r="9"/><polyline points="8 12.5 11 15.5 16 9"/>'
   };
 
-  // badge id -> [glyph, stamp shape]. Shapes: single ring, double ring, rounded square, solid disc.
   var BY_ID = {
     first_spotter:  ["eye", "single"],
     regular_rider:  ["bus", "single"],
@@ -36,7 +32,8 @@
     night_owl:      ["moon", "sq"],
     crowd_reporter: ["users", "dbl"],
     highway_scout:  ["compass", "dbl"],
-    round_tripper:  ["repeat", "sq"]
+    round_tripper:  ["repeat", "sq"],
+    trip_finisher:  ["flag", "sq"]
   };
 
   var PAPER = "#e6dfcc";
@@ -59,7 +56,7 @@
     } else if (shape === "sq") {
       body = '<rect x="4" y="4" width="56" height="56" rx="14" fill="none" stroke="currentColor" stroke-width="2.4"' + dash + "/>" +
         '<rect x="9" y="9" width="46" height="46" rx="10" fill="none" stroke="currentColor" stroke-width="1.2"' + dash + "/>" + g("currentColor");
-    } else { // disc
+    } else {
       body = earned
         ? '<circle cx="32" cy="32" r="29" fill="none" stroke="currentColor" stroke-width="2.4"/><circle cx="32" cy="32" r="23" fill="currentColor"/>' + g(PAPER)
         : '<circle cx="32" cy="32" r="29" fill="none" stroke="currentColor" stroke-width="2.4" stroke-dasharray="3.5 4"/>' +
@@ -68,7 +65,6 @@
     return body;
   }
 
-  // Returns an <svg> element. `earned` stamps are inked (and slightly rotated, like a real stamp).
   function stamp(id, earned, rotate) {
     var svg = document.createElementNS(NS, "svg");
     svg.setAttribute("class", "stampsvg" + (earned ? " earned-stamp" : ""));
@@ -79,8 +75,7 @@
     return svg;
   }
 
-  // Small fixed set of tilts so a sheet of stamps looks hand-pressed but stays stable between renders.
-  var TILTS = [-5, 4, -3, 6, -6, 3, -4, 5, -2, 3, -5, 4];
+  var TILTS = [-5, 4, -3, 6, -6, 3, -4, 5, -2, 3, -5, 4, -3];
   function tilt(index) { return TILTS[index % TILTS.length]; }
 
   window.TransitPulseBadgeArt = { stamp: stamp, tilt: tilt };

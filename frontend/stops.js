@@ -50,6 +50,8 @@
     var currentEtaStop = null;
     var preselectStopId = params.get("stop");
     if (preselectStopId && !/^\d+$/.test(preselectStopId)) preselectStopId = null;
+    var confirmTripParam = params.get("confirm_trip") === "1";
+    var showWaypoints = false;
 
     var tickTimer = null;
     var refetchTimer = null;
@@ -282,10 +284,18 @@
       };
     }
 
+    function getPrimaryStops() {
+      var primary = stops.filter(function (s) { return !s.is_waypoint; });
+      return primary.length > 0 ? primary : stops;
+    }
+
     function getStopRole(stop) {
-      if (!stops || stops.length < 2 || !stop || !selectedDirection) return "intermediate";
-      var firstStop = stops[0];
-      var lastStop = stops[stops.length - 1];
+      if (!stop) return "intermediate";
+      if (stop.is_waypoint) return "waypoint";
+      var primary = getPrimaryStops();
+      if (!primary || primary.length < 2 || !selectedDirection) return "intermediate";
+      var firstStop = primary[0];
+      var lastStop = primary[primary.length - 1];
       var stopId = String(stop.route_stop_id);
       var name = (stop.name || "").toLowerCase();
 
@@ -308,9 +318,11 @@
     }
 
     function isOriginStop(stop) {
-      if (!stops || stops.length === 0 || !stop || !selectedDirection) return false;
-      var firstStop = stops[0];
-      var lastStop = stops[stops.length - 1];
+      if (!stop || stop.is_waypoint || !selectedDirection) return false;
+      var primary = getPrimaryStops();
+      if (!primary || primary.length === 0) return false;
+      var firstStop = primary[0];
+      var lastStop = primary[primary.length - 1];
       var stopId = String(stop.route_stop_id);
       var name = (stop.name || "").toLowerCase();
 
@@ -332,11 +344,29 @@
     }
 
     function buildLiveMetaText(eta) {
-      var reports = eta.reports_count || 1;
-      var countText = "Based on " + reports + (reports === 1 ? " report" : " reports");
+      var parts = [];
+      var speed = Number(eta.live_speed_kmh);
+      if (eta.traffic_status === "heavy" && isFinite(speed) && speed > 0) {
+        parts.push("Slow traffic (" + Math.round(speed) + " km/h)");
+      } else if (eta.traffic_status === "moderate" && isFinite(speed) && speed > 0) {
+        parts.push("Moderate traffic (" + Math.round(speed) + " km/h)");
+      }
+
+      if (eta["spotted at"]) {
+        parts.push("Spotted at " + eta["spotted at"]);
+      } else {
+        var reports = eta.reports_count || 1;
+        parts.push("Based on " + reports + (reports === 1 ? " report" : " reports"));
+      }
+
       var ago = formatRelativeAgo(eta.seen_ago_minutes);
-      var agoText = ago ? " · " + ago : "";
-      return countText + agoText;
+      if (ago) parts.push(ago);
+
+      if (eta.traffic_status === "smooth" && isFinite(speed) && speed > 0) {
+        parts.push(Math.round(speed) + " km/h");
+      }
+
+      return parts.join(" · ");
     }
 
     function buildConfidenceText(eta) {
@@ -357,8 +387,16 @@
       return parts.length > 0 ? " · " + parts.join(" · ") : "";
     }
 
+    function formatDistanceAway(km) {
+      if (km === undefined || km === null || !isFinite(Number(km)) || Number(km) <= 0) return "";
+      var val = Number(km);
+      if (val < 0.2) return "< 0.2 km away";
+      return val.toFixed(1) + " km away";
+    }
+
     function startCountdown(stop, eta, etaValue, etaMeta) {
       var liveIndicator = etaValue.parentElement ? etaValue.parentElement.querySelector(".live-indicator") : null;
+      var upcomingEl = etaValue.parentElement ? etaValue.parentElement.querySelector(".eta-upcoming") : null;
       var parsed = parseEta(eta);
       if (!parsed) {
         if (liveIndicator) liveIndicator.classList.add("is-hidden");
@@ -369,10 +407,15 @@
       var left = sameStop ? (countdownEndAt - Date.now()) / 1000 : -1;
       var terminatesSuffix = getStopRole(stop) === "final_terminus" ? " · Bus terminates here" : "";
       var liveMeta = buildLiveMetaText(eta) + terminatesSuffix;
+      var metaClass = eta.traffic_status === "heavy" ? "eta-meta eta-meta-warning" : "eta-meta";
+      var initialDistKm = (eta.distance_km !== undefined && eta.distance_km !== null && isFinite(Number(eta.distance_km)) && Number(eta.distance_km) > 0)
+        ? Number(eta.distance_km)
+        : null;
+      var initialSec = Math.max(1, parsed.sec);
 
       if (sameStop && !parsed.precise && left > 0 && Math.abs(left - parsed.sec) <= 60) {
         if (liveIndicator) liveIndicator.classList.remove("is-hidden");
-        etaMeta.className = "eta-meta";
+        etaMeta.className = metaClass;
         etaMeta.textContent = liveMeta;
         return true;
       }
@@ -383,6 +426,18 @@
       countdownStopId = String(stop.route_stop_id);
       etaValue.classList.add("is-ticking");
 
+      function updateDistanceAnchor(remSec) {
+        if (!upcomingEl) return;
+        if (initialDistKm === null) {
+          upcomingEl.textContent = "";
+          upcomingEl.classList.add("is-hidden");
+          return;
+        }
+        var curKm = remSec <= 0 ? 0.1 : Math.max(0.1, initialDistKm * Math.min(1, remSec / initialSec));
+        upcomingEl.textContent = formatDistanceAway(curKm);
+        upcomingEl.classList.remove("is-hidden");
+      }
+
       function tick() {
         var remaining = Math.round((countdownEndAt - Date.now()) / 1000);
         if (remaining <= 0) {
@@ -390,6 +445,7 @@
           etaValue.textContent = (role === "start_terminus" || eta.is_departure) ? "Departing" : "Arriving";
           etaValue.classList.remove("is-ticking");
           etaValue.classList.add("is-arriving");
+          updateDistanceAnchor(0);
           window.clearInterval(tickTimer);
           tickTimer = null;
           return;
@@ -397,11 +453,12 @@
         var m = Math.floor(remaining / 60);
         var sec = remaining % 60;
         etaValue.textContent = m + ":" + (sec < 10 ? "0" : "") + sec;
+        updateDistanceAnchor(remaining);
       }
 
       tick();
       tickTimer = window.setInterval(tick, 1000);
-      etaMeta.className = "eta-meta";
+      etaMeta.className = metaClass;
       etaMeta.textContent = liveMeta;
 
       refetchTimer = window.setInterval(async function () {
@@ -516,23 +573,66 @@
       }
     }
 
+    function renderCheckpointToggle(waypointCount) {
+      var head = document.querySelector(".route-section-head");
+      if (!head) return;
+      var btn = document.getElementById("checkpoint-toggle-btn");
+      if (waypointCount <= 0) {
+        if (btn && btn.parentNode) btn.parentNode.removeChild(btn);
+        return;
+      }
+      if (!btn) {
+        btn = document.createElement("button");
+        btn.type = "button";
+        btn.id = "checkpoint-toggle-btn";
+        btn.className = "checkpoint-toggle-btn";
+        btn.addEventListener("click", function () {
+          showWaypoints = !showWaypoints;
+          renderStops();
+        });
+        head.appendChild(btn);
+      }
+      btn.setAttribute("aria-pressed", String(showWaypoints));
+      btn.classList.toggle("is-active", showWaypoints);
+      btn.textContent = showWaypoints
+        ? "Hide checkpoints"
+        : ("Show " + waypointCount + (waypointCount === 1 ? " checkpoint" : " checkpoints"));
+    }
+
     function renderStops() {
       stopsList.innerHTML = "";
 
       if (stops.length === 0) {
         emptyCard.classList.remove("is-hidden");
         stopsSubtitle.textContent = "No stops available";
+        renderCheckpointToggle(0);
         return;
       }
 
       emptyCard.classList.add("is-hidden");
-      stopsSubtitle.textContent = stops.length + (stops.length === 1 ? " stop" : " stops");
 
-      stops.forEach(function (stop) {
+      var primaryStops = getPrimaryStops();
+      var waypointCount = stops.filter(function (s) { return Boolean(s.is_waypoint); }).length;
+
+      if (preselectStopId) {
+        var preStop = stops.find(function (s) { return String(s.route_stop_id) === String(preselectStopId); });
+        if (preStop && preStop.is_waypoint) showWaypoints = true;
+      }
+
+      stopsSubtitle.textContent = primaryStops.length + (primaryStops.length === 1 ? " stop" : " stops");
+      renderCheckpointToggle(waypointCount);
+
+      var visibleStops = showWaypoints ? stops : primaryStops;
+      visibleStops.forEach(function (stop) {
         stopsList.appendChild(createStopCard(stop));
       });
 
       checkCooldown();
+
+      if (confirmTripParam && window.TransitPulseTrip) {
+        confirmTripParam = false;
+        window.TransitPulseTrip.confirmNow();
+      }
 
       if (preselectStopId) {
         var target = stopsList.querySelector('[data-route-stop-id="' + preselectStopId + '"]');
@@ -547,8 +647,9 @@
     }
 
     function createStopCard(stop) {
+      var isWp = Boolean(stop.is_waypoint);
       var card = document.createElement("article");
-      card.className = "stop-card";
+      card.className = "stop-card" + (isWp ? " is-waypoint-card" : "");
       card.dataset.routeStopId = String(stop.route_stop_id);
 
       var top = document.createElement("button");
@@ -557,7 +658,7 @@
       top.setAttribute("aria-pressed", "false");
 
       var indicator = document.createElement("span");
-      indicator.className = "stop-indicator";
+      indicator.className = "stop-indicator" + (isWp ? " is-waypoint-indicator" : "");
       indicator.setAttribute("aria-hidden", "true");
 
       var text = document.createElement("span");
@@ -566,8 +667,15 @@
       var name = document.createElement("strong");
       name.textContent = getDisplayValue(stop.name, "Unnamed stop");
 
+      if (isWp) {
+        var wpTag = document.createElement("span");
+        wpTag.className = "waypoint-tag";
+        wpTag.textContent = "CHECKPOINT";
+        text.appendChild(wpTag);
+      }
+
       var landmark = document.createElement("small");
-      landmark.textContent = getDisplayValue(stop.landmark, "No landmark provided");
+      landmark.textContent = getDisplayValue(stop.landmark, isWp ? "Highway timing checkpoint" : "No landmark provided");
 
       text.appendChild(name);
       text.appendChild(landmark);
@@ -683,33 +791,35 @@
       card.appendChild(top);
       card.appendChild(details);
 
-      var star = document.createElement("button");
-      star.type = "button";
-      star.className = "star-button";
-      function paintStar() {
-        var on = window.TransitPulseFavorites.isStarred(stop.route_stop_id);
-        star.classList.toggle("is-starred", on);
-        star.textContent = on ? "\u2605" : "\u2606";
-        star.setAttribute("aria-pressed", String(on));
-        star.setAttribute("aria-label", (on ? "Remove " : "Add ") + getDisplayValue(stop.name, "stop") + (on ? " from" : " to") + " starred");
-      }
-      star.addEventListener("click", function (event) {
-        event.stopPropagation();
-        if (!TransitPulseStorage.getUserId()) {
-          openAuthModal("Verify your number once to save your favourite stops across devices.");
-          return;
+      if (!isWp) {
+        var star = document.createElement("button");
+        star.type = "button";
+        star.className = "star-button";
+        function paintStar() {
+          var on = window.TransitPulseFavorites.isStarred(stop.route_stop_id);
+          star.classList.toggle("is-starred", on);
+          star.textContent = on ? "\u2605" : "\u2606";
+          star.setAttribute("aria-pressed", String(on));
+          star.setAttribute("aria-label", (on ? "Remove " : "Add ") + getDisplayValue(stop.name, "stop") + (on ? " from" : " to") + " starred");
         }
-        window.TransitPulseFavorites.toggle({
-          route_stop_id: stop.route_stop_id,
-          route_id: routeId,
-          route_name: routeName || "",
-          name: stop.name,
-          landmark: stop.landmark
+        star.addEventListener("click", function (event) {
+          event.stopPropagation();
+          if (!TransitPulseStorage.getUserId()) {
+            openAuthModal("Verify your number once to save your favourite stops across devices.");
+            return;
+          }
+          window.TransitPulseFavorites.toggle({
+            route_stop_id: stop.route_stop_id,
+            route_id: routeId,
+            route_name: routeName || "",
+            name: stop.name,
+            landmark: stop.landmark
+          });
+          paintStar();
         });
         paintStar();
-      });
-      paintStar();
-      card.appendChild(star);
+        card.appendChild(star);
+      }
 
       return card;
     }
@@ -958,6 +1068,12 @@
         stopCountdown();
         if (liveIndicator) liveIndicator.classList.remove("is-hidden");
         etaValue.textContent = getDisplayValue(eta["eta minutes"], "—") + " min";
+        var distText = formatDistanceAway(eta.distance_km);
+        if (upcomingEl && distText) {
+          upcomingEl.textContent = distText;
+          upcomingEl.classList.remove("is-hidden");
+        }
+        etaMeta.className = eta.traffic_status === "heavy" ? "eta-meta eta-meta-warning" : "eta-meta";
         etaMeta.textContent = eta.message || (buildLiveMetaText(eta) + terminatesSuffix);
         return;
       }
@@ -1133,10 +1249,11 @@
       });
 
       var isOrigin = isOriginStop(stop);
+      var defaultSubmitText = isOrigin ? "Confirm Departure" : "Confirm & Submit";
       var submitBtn = document.createElement("button");
       submitBtn.type = "button";
       submitBtn.className = "wide-button wide-button-secondary report-button";
-      submitBtn.textContent = isOrigin ? "Confirm Departure" : "Confirm & Submit";
+      submitBtn.textContent = defaultSubmitText;
       submitBtn.addEventListener("click", async function () {
         if (!selectedDirection) {
           etaMeta.className = "eta-meta eta-meta-warning";
@@ -1158,6 +1275,9 @@
           picker.remove();
           stopCountdown();
           startCooldown();
+          if (sightingResult && sightingResult.active_trip && window.TransitPulseTrip) {
+            window.TransitPulseTrip.start(sightingResult.active_trip);
+          }
           showThankYou(sightingResult && sightingResult.new_badges);
           button.disabled = true;
           button.textContent = "Reported • wait 3 min";
@@ -1180,7 +1300,7 @@
             return;
           }
 
-          resetButton(submitBtn, "Confirm & Submit");
+          resetButton(submitBtn, defaultSubmitText);
           etaMeta.className = "eta-meta eta-meta-error";
           etaMeta.textContent = getSightingError(error);
         }
