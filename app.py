@@ -5,6 +5,8 @@ except ImportError:
     sentry_sdk = None
 from flask import Flask, request, jsonify, g, abort, send_from_directory
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from sqlalchemy import select, func
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
@@ -25,11 +27,32 @@ if sentry_dsn and sentry_sdk:
         traces_sample_rate=0.1
     )
 
+is_prod = os.getenv("FLASK_ENV") == "production" or os.getenv("RENDER") is not None
+
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "transitpulse_dev_local_secret_key")
+app.config.update(
+    SESSION_COOKIE_SECURE=is_prod,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=24)
+)
+
 CORS(app)
 
-init_admin(app)
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["300 per minute"],
+    storage_uri="memory://",
+    strategy="fixed-window"
+)
+
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    return jsonify({"error": "Too many requests. Please wait a moment before trying again."}), 429
+
+init_admin(app, limiter=limiter)
 
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend")
 ALLOWED_EXTENSIONS = {'.html', '.js', '.css', '.png', '.jpg', '.jpeg',
@@ -338,25 +361,62 @@ def build_active_trip(session, user_id, current_rs, direction, operator_id, serv
 
 
 @app.route('/sighting', methods=['POST'])
+@limiter.limit("15 per minute; 60 per hour")
 @require_auth
 def post_sighting():
-    data = request.get_json() or {}
-    route_stop_id = data.get('route_stop_id')
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid request payload format."}), 400
+
+    raw_rs_id = data.get('route_stop_id')
+    try:
+        route_stop_id = int(raw_rs_id)
+        if route_stop_id <= 0:
+            return jsonify({"error": "Invalid route_stop_id."}), 400
+    except (ValueError, TypeError):
+        return jsonify({"error": "route_stop_id must be a valid integer."}), 400
+
     direction = data.get('direction', 'forward')
+    if direction not in ('forward', 'return'):
+        return jsonify({"error": "direction must be 'forward' or 'return'."}), 400
+
     crowd_level = data.get('crowd_level')
-    operator_id = data.get('operator_id')
+    if crowd_level is not None and crowd_level not in ('empty', 'standing', 'packed'):
+        return jsonify({"error": "crowd_level must be one of: empty, standing, packed."}), 400
+
+    raw_operator_id = data.get('operator_id')
+    operator_id = None
+    if raw_operator_id is not None:
+        try:
+            operator_id = int(raw_operator_id)
+            if operator_id <= 0:
+                operator_id = None
+        except (ValueError, TypeError):
+            return jsonify({"error": "operator_id must be a valid integer."}), 400
+
     raw_service_type = data.get('service_type')
-    service_type = raw_service_type if raw_service_type in ('shuttle', 'long_haul') else None
+    if raw_service_type is not None:
+        if raw_service_type not in ('shuttle', 'long_haul'):
+            return jsonify({"error": "service_type must be 'shuttle' or 'long_haul'."}), 400
+        service_type = raw_service_type
+    else:
+        service_type = None
+
     is_trip_confirmation = bool(data.get('is_trip_confirmation', False))
     user_id = g.current_user['id']
 
-    if not route_stop_id or not user_id:
-        return jsonify({"error": "require all fields"}), 400
+    if not user_id:
+        return jsonify({"error": "User identification required."}), 400
 
     with get_session() as session:
         current_rs = session.get(RouteStop, route_stop_id)
         if not current_rs:
             return jsonify({"error": "stop not found"}), 404
+
+        if operator_id is not None:
+            op_exists = session.get(Operator, operator_id)
+            if not op_exists:
+                return jsonify({"error": f"Operator with id {operator_id} does not exist."}), 400
 
         now_utc = datetime.utcnow()
         three_min_ago = now_utc - timedelta(minutes=3)
@@ -436,7 +496,13 @@ def post_sighting():
         except Exception as e:
             print(f"Prediction log matching notice: {e}")
 
-        session.commit()
+        try:
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            if sentry_sdk:
+                sentry_sdk.capture_exception(e)
+            return jsonify({"error": "Failed to save sighting due to a database error."}), 500
 
         new_badges = []
         if earned_before is not None:
@@ -491,8 +557,11 @@ def get_profile():
 
 
 @app.route('/eta/<int:route_stop_id>', methods=['GET'])
+@limiter.limit("60 per minute")
 def get_eta(route_stop_id):
     direction = request.args.get('direction', 'forward')
+    if direction not in ('forward', 'return'):
+        direction = 'forward'
     res = calculate_eta(route_stop_id, direction)
     if isinstance(res, dict) and "eta minutes" in res:
         try:
@@ -511,6 +580,7 @@ def get_eta(route_stop_id):
 
 
 @app.route('/feedback', methods=['POST'])
+@limiter.limit("5 per minute; 20 per hour")
 def submit_feedback():
     data = request.get_json() or {}
     msg = (data.get('message') or '').strip()
@@ -530,6 +600,7 @@ def submit_feedback():
 
 
 @app.route('/analytics/scan', methods=['POST', 'GET'])
+@limiter.limit("30 per minute")
 def record_scan():
     src = request.args.get('src')
     if not src and request.is_json:
@@ -545,7 +616,9 @@ def record_scan():
             count = session.scalars(select(func.count(PosterScan.id)).where(PosterScan.src == src)).first() or 1
             return jsonify({"status": "ok", "src": src, "total_scans": count})
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        if sentry_sdk:
+            sentry_sdk.capture_exception(e)
+        return jsonify({"status": "error", "message": "Failed to record scan"}), 500
 
 
 @app.route('/analytics/accuracy', methods=['GET'])
@@ -608,36 +681,54 @@ def get_favorites():
 
 
 @app.route('/favorites/toggle', methods=['POST'])
+@limiter.limit("30 per minute")
 def toggle_favorite():
-    data = request.get_json() or {}
-    user_id = data.get('user_id')
-    route_stop_id = data.get('route_stop_id')
+    data = request.get_json(silent=True) or {}
+    raw_user_id = data.get('user_id')
+    raw_route_stop_id = data.get('route_stop_id')
 
-    if not user_id or not route_stop_id:
-        return jsonify({"error": "user_id and route_stop_id are required"}), 400
+    try:
+        user_id = int(raw_user_id)
+        route_stop_id = int(raw_route_stop_id)
+        if user_id <= 0 or route_stop_id <= 0:
+            return jsonify({"error": "user_id and route_stop_id must be positive integers"}), 400
+    except (ValueError, TypeError):
+        return jsonify({"error": "user_id and route_stop_id must be valid integers"}), 400
 
     with get_session() as session:
+        if not session.get(User, user_id):
+            return jsonify({"error": "User not found"}), 404
+        if not session.get(RouteStop, route_stop_id):
+            return jsonify({"error": "RouteStop not found"}), 404
+
         stmt = select(UserFavorite).where(
-            UserFavorite.user_id == int(user_id),
-            UserFavorite.route_stop_id == int(route_stop_id)
+            UserFavorite.user_id == user_id,
+            UserFavorite.route_stop_id == route_stop_id
         )
         existing = session.scalars(stmt).first()
 
-        if existing:
-            session.delete(existing)
-            session.commit()
-            return jsonify({"status": "ok", "starred": False})
-        else:
-            fav = UserFavorite(user_id=int(user_id), route_stop_id=int(route_stop_id))
-            session.add(fav)
-            session.commit()
-            return jsonify({"status": "ok", "starred": True})
+        try:
+            if existing:
+                session.delete(existing)
+                session.commit()
+                return jsonify({"status": "ok", "starred": False})
+            else:
+                fav = UserFavorite(user_id=user_id, route_stop_id=route_stop_id)
+                session.add(fav)
+                session.commit()
+                return jsonify({"status": "ok", "starred": True})
+        except Exception as e:
+            session.rollback()
+            if sentry_sdk:
+                sentry_sdk.capture_exception(e)
+            return jsonify({"error": "Failed to update favorite due to a database error."}), 500
 
 
 @app.route('/register', methods=['POST'])
+@limiter.limit("10 per minute; 30 per hour")
 @require_auth
 def register_user():
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
     user_name = (data.get('name') or '').strip()[:40]
 
     with get_session() as session:
@@ -647,11 +738,17 @@ def register_user():
 
         if user_name:
             user.name = user_name
-            session.commit()
+            try:
+                session.commit()
+            except Exception as e:
+                session.rollback()
+                if sentry_sdk:
+                    sentry_sdk.capture_exception(e)
+                return jsonify({"error": "Failed to save profile name."}), 500
 
         return jsonify({
             "status": "ok",
-            "user_id":user.id,
+            "user_id": user.id,
             "user": {
                 "id": user.id,
                 "phone": user.phone,
@@ -669,4 +766,6 @@ def serve_static(filename):
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    debug_flag = os.getenv("FLASK_DEBUG", "false").lower() in ("true", "1", "t")
+    port = int(os.getenv("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=debug_flag)

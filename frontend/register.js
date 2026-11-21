@@ -50,9 +50,17 @@
       var phone = phoneInput.value.trim();
 
       if (step === "phone") {
-        if (!/^\d{10}$/.test(phone)) {
-          TransitPulseUI.showMessage(messageBox, "Phone number must contain exactly 10 digits.", "error");
+        if (!/^[6-9]\d{9}$/.test(phone)) {
+          TransitPulseUI.showMessage(messageBox, "Please enter a valid 10-digit Indian mobile number starting with 6, 7, 8, or 9.", "error");
           phoneInput.focus();
+          return;
+        }
+
+        var lastSent = Number(sessionStorage.getItem("tp_otp_cooldown_at") || 0);
+        var nowMs = Date.now();
+        if (nowMs - lastSent < 60000) {
+          var waitSec = Math.ceil((60000 - (nowMs - lastSent)) / 1000);
+          TransitPulseUI.showMessage(messageBox, "Please wait " + waitSec + "s before requesting another OTP.", "warning");
           return;
         }
 
@@ -91,6 +99,7 @@
             verifier
           );
 
+          sessionStorage.setItem("tp_otp_cooldown_at", String(Date.now()));
           step = "otp";
           otpGroup.classList.remove("is-hidden");
           phoneInput.disabled = true;

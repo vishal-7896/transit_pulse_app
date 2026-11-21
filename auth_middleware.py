@@ -1,6 +1,10 @@
 import os
 import json
 import base64
+try:
+    import sentry_sdk
+except ImportError:
+    sentry_sdk = None
 from functools import wraps
 from flask import request, jsonify, g
 import firebase_admin
@@ -85,7 +89,9 @@ def require_auth(f):
                 }
 
         except Exception as e:
-            return jsonify({"error": f"Invalid or expired token: {str(e)}"}), 401
+            if sentry_sdk:
+                sentry_sdk.capture_exception(e)
+            return jsonify({"error": "Invalid or expired authentication token"}), 401
 
         return f(*args, **kwargs)
 

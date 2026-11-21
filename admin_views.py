@@ -22,10 +22,20 @@ from dotenv import load_dotenv
 load_dotenv()
 from werkzeug.security import generate_password_hash
 
-ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
-ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH") or generate_password_hash("admin123")
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "tp_admin_corridor")
+ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH")
+if not ADMIN_PASSWORD_HASH:
+    admin_plain = os.getenv("ADMIN_PASSWORD")
+    if admin_plain:
+        ADMIN_PASSWORD_HASH = generate_password_hash(admin_plain)
+    elif os.getenv("FLASK_ENV") != "production" and not os.getenv("RENDER"):
+        ADMIN_PASSWORD_HASH = generate_password_hash("transitpulse_dev_local_only")
+    else:
+        ADMIN_PASSWORD_HASH = None
 
 def credentials_ok(username, password):
+    if not ADMIN_PASSWORD_HASH or not ADMIN_USERNAME:
+        return False
     return (hmac.compare_digest(username or "", ADMIN_USERNAME)
             and check_password_hash(ADMIN_PASSWORD_HASH, password or ""))
 
@@ -153,11 +163,14 @@ class StopAdmin(SecureModelView):
         "routes_display": "Routes"
     }
 
-def init_admin(app):
+def init_admin(app, limiter=None):
+    index_view = SecureAdminIndexView()
+    if limiter:
+        index_view.login_view = limiter.limit("5 per minute; 20 per hour")(index_view.login_view)
     admin = Admin(
         app,
         name="TransitPulse Admin",
-        index_view=SecureAdminIndexView()
+        index_view=index_view
     )
     @app.teardown_appcontext
     def shutdown_session(exception=None):
