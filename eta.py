@@ -369,8 +369,29 @@ def calculate_eta(route_stop_id, direction='forward'):
                     passed_sightings.append(elapsed)
                 continue
 
-            if is_beyond(sighting_stop_order) or sighting_stop_order == user_stop_order:
-                passed_sightings.append((elapsed, seen_at_formatted))
+            if is_beyond(sighting_stop_order):
+                extra_travel = round(span_sum(travel_times, user_stop_order, sighting_stop_order) * pace_factor)
+                passed_stop_elapsed = elapsed + extra_travel
+                if passed_stop_elapsed <= 900:
+                    passed_sightings.append((passed_stop_elapsed, seen_at_formatted))
+                continue
+
+            if sighting_stop_order == user_stop_order:
+                if elapsed <= 180:
+                    approaching_buses.append({
+                        "eta_seconds": 0,
+                        "eta_minutes": 0,
+                        "arriving_now": True,
+                        "spotted_at": s_stop_name,
+                        "spotted_is_waypoint": bool(s_is_wp),
+                        "service_type": s_service_type,
+                        "service_type_label": SERVICE_TYPE_LABELS.get(s_service_type),
+                        "distance_km": 0.1,
+                        "seen_ago_seconds": int(elapsed),
+                        "seen_ago_minutes": max(0, round(elapsed / 60))
+                    })
+                elif elapsed <= 900:
+                    passed_sightings.append((elapsed, seen_at_formatted))
                 continue
 
             base_remaining_seconds = span_sum(travel_times, sighting_stop_order, user_stop_order)
@@ -397,8 +418,23 @@ def calculate_eta(route_stop_id, direction='forward'):
                     "seen_ago_seconds": int(elapsed),
                     "seen_ago_minutes": max(0, round(elapsed / 60))
                 })
+            elif eta_seconds >= -180:
+                approaching_buses.append({
+                    "eta_seconds": 0,
+                    "eta_minutes": 0,
+                    "arriving_now": True,
+                    "spotted_at": s_stop_name,
+                    "spotted_is_waypoint": bool(s_is_wp),
+                    "service_type": s_service_type,
+                    "service_type_label": SERVICE_TYPE_LABELS.get(s_service_type),
+                    "distance_km": 0.1,
+                    "seen_ago_seconds": int(elapsed),
+                    "seen_ago_minutes": max(0, round(elapsed / 60))
+                })
             else:
-                passed_sightings.append((elapsed, seen_at_formatted))
+                passed_stop_elapsed = elapsed - adjusted_remaining
+                if passed_stop_elapsed <= 900:
+                    passed_sightings.append((passed_stop_elapsed, seen_at_formatted))
 
         seen_ago_seconds = int((curr_time - freshest_seen_at).total_seconds()) if freshest_seen_at else 0
         seen_ago_minutes = max(0, round(seen_ago_seconds / 60))
@@ -509,18 +545,31 @@ def calculate_eta(route_stop_id, direction='forward'):
             }
 
         if approaching_buses:
-            approaching_buses.sort(key=lambda b: b["eta_seconds"])
+            approaching_buses.sort(key=lambda b: (0 if b.get("arriving_now") else 1, b["eta_seconds"]))
             earliest = approaching_buses[0]
+            is_arriving = bool(earliest.get("arriving_now") or earliest["eta_seconds"] <= 0)
+
+            dist_val = 0.1 if is_arriving else earliest["distance_km"]
+            sec_val = 0 if is_arriving else earliest["eta_seconds"]
+            min_val = 0 if is_arriving else earliest["eta_minutes"]
+
+            spotted_label = f"Spotted at {earliest['spotted_at']}"
+            ago_text = f"{earliest['seen_ago_minutes']}m ago" if earliest['seen_ago_minutes'] > 0 else "just now"
+            if is_arriving:
+                msg = f"Arriving now · {spotted_label} ({ago_text})"
+            else:
+                msg = None
 
             response = {
                 "status": "live",
-                "eta seconds": earliest["eta_seconds"],
-                "eta minutes": earliest["eta_minutes"],
+                "eta seconds": sec_val,
+                "eta minutes": min_val,
+                "is_arriving": is_arriving,
                 "spotted at": earliest["spotted_at"],
                 "spotted_is_waypoint": earliest["spotted_is_waypoint"],
                 "service_type": earliest["service_type"],
                 "service_type_label": earliest["service_type_label"],
-                "distance_km": earliest["distance_km"],
+                "distance_km": dist_val,
                 "live_speed_kmh": live_speed["live_speed_kmh"] if live_speed else None,
                 "traffic_status": live_speed["traffic_status"] if live_speed else None,
                 "reports_count": fresh_sightings_count,
@@ -529,6 +578,8 @@ def calculate_eta(route_stop_id, direction='forward'):
                 "headway_minutes": headway_min,
                 "tier": sched["tier"]
             }
+            if msg:
+                response["message"] = msg
 
             if len(approaching_buses) > 1:
                 subsequent = approaching_buses[1]
@@ -560,25 +611,34 @@ def calculate_eta(route_stop_id, direction='forward'):
                     "message": f"Last bus passed {passed_mins}m ago" if passed_mins <= 30 else night_dep_msg
                 }
 
-            rem_sec = headway_sec - min_elapsed
-            if rem_sec > 60:
-                next_mins = max(1, round(rem_sec / 60))
-                msg = f"Bus passed {passed_mins}m ago · Next bus expected in ~{next_mins} min"
-            else:
-                next_mins = 1
-                msg = f"Bus passed {passed_mins}m ago · Next bus due now"
+            if passed_mins <= 15:
+                if headway_min > passed_mins:
+                    next_mins = max(1, headway_min - passed_mins)
+                else:
+                    next_mins = headway_min
 
-            return {
-                "status": "passed",
-                "eta minutes": next_mins,
-                "next bus approx mins": next_mins,
-                "headway_minutes": headway_min,
-                "reports_count": fresh_sightings_count,
-                "seen_ago_minutes": passed_mins,
-                "seen_ago_seconds": int(min_elapsed),
-                "tier": sched["tier"],
-                "message": msg
-            }
+                if is_terminus:
+                    if passed_mins <= 2:
+                        msg = f"Bus just arrived · Next bus expected in ~{next_mins} min"
+                    else:
+                        msg = f"Bus arrived ~{passed_mins}m ago · Next bus expected in ~{next_mins} min"
+                else:
+                    if passed_mins <= 2:
+                        msg = f"Bus just passed · Next bus expected in ~{next_mins} min"
+                    else:
+                        msg = f"Bus passed ~{passed_mins}m ago · Next bus expected in ~{next_mins} min"
+
+                return {
+                    "status": "passed",
+                    "eta minutes": next_mins,
+                    "next bus approx mins": next_mins,
+                    "headway_minutes": headway_min,
+                    "reports_count": fresh_sightings_count,
+                    "seen_ago_minutes": passed_mins,
+                    "seen_ago_seconds": int(min_elapsed),
+                    "tier": sched["tier"],
+                    "message": msg
+                }
 
         if sched["is_night"]:
             return {

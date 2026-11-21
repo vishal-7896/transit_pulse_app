@@ -172,10 +172,18 @@
     }
 
     function parseEta(eta) {
+      if (!eta) return null;
+      if (eta.is_arriving || eta.arriving_now) return { sec: 0, precise: true, is_arriving: true };
       var secs = Number(eta["eta seconds"] !== undefined ? eta["eta seconds"] : eta.eta_seconds);
-      if (isFinite(secs) && secs >= 0) return { sec: secs, precise: true };
+      if (isFinite(secs)) {
+        if (secs > 0) return { sec: secs, precise: true, is_arriving: false };
+        if (secs <= 0 && secs >= -180) return { sec: 0, precise: true, is_arriving: true };
+      }
       var mins = Number(eta["eta minutes"]);
-      if (isFinite(mins) && mins >= 0) return { sec: mins * 60, precise: false };
+      if (isFinite(mins)) {
+        if (mins > 0) return { sec: mins * 60, precise: false, is_arriving: false };
+        if (mins === 0) return { sec: 0, precise: false, is_arriving: true };
+      }
       return null;
     }
 
@@ -428,8 +436,7 @@
         return false;
       }
 
-      var sameStop = countdownStopId === String(stop.route_stop_id) && countdownEndAt !== null;
-      var left = sameStop ? (countdownEndAt - Date.now()) / 1000 : -1;
+      var role = getStopRole(stop);
       var terminatesSuffix = getStopRole(stop) === "final_terminus" ? " · Bus terminates here" : "";
       var liveMeta = buildLiveMetaText(eta) + terminatesSuffix;
       var metaClass = eta.traffic_status === "heavy" ? "eta-meta eta-meta-warning" : "eta-meta";
@@ -438,10 +445,69 @@
         : null;
       var initialSec = Math.max(1, parsed.sec);
 
+      function updateDistanceAnchor(remSec) {
+        if (!upcomingEl) return;
+        if (remSec <= 0) {
+          upcomingEl.textContent = formatDistanceAway(0.1);
+          upcomingEl.classList.remove("is-hidden");
+          return;
+        }
+        if (initialDistKm === null) {
+          upcomingEl.textContent = "";
+          upcomingEl.classList.add("is-hidden");
+          return;
+        }
+        var curKm = Math.max(0.1, initialDistKm * Math.min(1, remSec / initialSec));
+        upcomingEl.textContent = formatDistanceAway(curKm);
+        upcomingEl.classList.remove("is-hidden");
+      }
+
+      function scheduleRefetch(stopTarget, targetVal, targetMeta) {
+        if (refetchTimer) {
+          window.clearInterval(refetchTimer);
+          refetchTimer = null;
+        }
+        refetchTimer = window.setInterval(async function () {
+          if (document.hidden) return;
+          try {
+            var fresh = await TransitPulseAPI.getEta(stopTarget.route_stop_id, selectedDirection);
+            if (countdownStopId !== String(stopTarget.route_stop_id)) return;
+            if (fresh && (fresh.status === "live" || fresh.is_arriving)) {
+              startCountdown(stopTarget, fresh, targetVal, targetMeta);
+            } else {
+              var elapsedSinceEnd = countdownEndAt ? (Date.now() - countdownEndAt) : 999999;
+              if (elapsedSinceEnd >= 0 && elapsedSinceEnd < 120000) {
+                return;
+              }
+              stopCountdown();
+              renderEtaState(fresh, targetVal, targetMeta, stopTarget);
+            }
+          } catch (e) {}
+        }, REFETCH_MS);
+      }
+
+      if (parsed.is_arriving || parsed.sec <= 0 || eta.is_arriving) {
+        stopCountdown();
+        if (liveIndicator) liveIndicator.classList.remove("is-hidden");
+        etaValue.textContent = (role === "start_terminus" || eta.is_departure) ? "Departing" : "Arriving";
+        etaValue.classList.remove("is-ticking");
+        etaValue.classList.add("is-arriving");
+        updateDistanceAnchor(0);
+        etaMeta.className = metaClass;
+        etaMeta.textContent = eta.message || liveMeta;
+        countdownStopId = String(stop.route_stop_id);
+        countdownEndAt = Date.now();
+        scheduleRefetch(stop, etaValue, etaMeta);
+        return true;
+      }
+
+      var sameStop = countdownStopId === String(stop.route_stop_id) && countdownEndAt !== null;
+      var left = sameStop ? (countdownEndAt - Date.now()) / 1000 : -1;
+
       if (sameStop && !parsed.precise && left > 0 && Math.abs(left - parsed.sec) <= 60) {
         if (liveIndicator) liveIndicator.classList.remove("is-hidden");
         etaMeta.className = metaClass;
-        etaMeta.textContent = liveMeta;
+        etaMeta.textContent = eta.message || liveMeta;
         return true;
       }
 
@@ -449,30 +515,20 @@
       if (liveIndicator) liveIndicator.classList.remove("is-hidden");
       countdownEndAt = Date.now() + parsed.sec * 1000;
       countdownStopId = String(stop.route_stop_id);
+      etaValue.classList.remove("is-arriving");
       etaValue.classList.add("is-ticking");
-
-      function updateDistanceAnchor(remSec) {
-        if (!upcomingEl) return;
-        if (initialDistKm === null) {
-          upcomingEl.textContent = "";
-          upcomingEl.classList.add("is-hidden");
-          return;
-        }
-        var curKm = remSec <= 0 ? 0.1 : Math.max(0.1, initialDistKm * Math.min(1, remSec / initialSec));
-        upcomingEl.textContent = formatDistanceAway(curKm);
-        upcomingEl.classList.remove("is-hidden");
-      }
 
       function tick() {
         var remaining = Math.round((countdownEndAt - Date.now()) / 1000);
         if (remaining <= 0) {
-          var role = getStopRole(stop);
           etaValue.textContent = (role === "start_terminus" || eta.is_departure) ? "Departing" : "Arriving";
           etaValue.classList.remove("is-ticking");
           etaValue.classList.add("is-arriving");
           updateDistanceAnchor(0);
-          window.clearInterval(tickTimer);
-          tickTimer = null;
+          if (remaining < -120) {
+            window.clearInterval(tickTimer);
+            tickTimer = null;
+          }
           return;
         }
         var m = Math.floor(remaining / 60);
@@ -484,21 +540,9 @@
       tick();
       tickTimer = window.setInterval(tick, 1000);
       etaMeta.className = metaClass;
-      etaMeta.textContent = liveMeta;
+      etaMeta.textContent = eta.message || liveMeta;
 
-      refetchTimer = window.setInterval(async function () {
-        if (document.hidden) return;
-        try {
-          var fresh = await TransitPulseAPI.getEta(stop.route_stop_id, selectedDirection);
-          if (countdownStopId !== String(stop.route_stop_id)) return;
-          if (fresh && fresh.status === "live") {
-            startCountdown(stop, fresh, etaValue, etaMeta);
-          } else {
-            stopCountdown();
-            renderEtaState(fresh, etaValue, etaMeta, stop);
-          }
-        } catch (e) {}
-      }, REFETCH_MS);
+      scheduleRefetch(stop, etaValue, etaMeta);
       return true;
     }
 
@@ -653,11 +697,6 @@
       });
 
       checkCooldown();
-
-      if (confirmTripParam && window.TransitPulseTrip) {
-        confirmTripParam = false;
-        window.TransitPulseTrip.confirmNow();
-      }
 
       if (preselectStopId) {
         var target = stopsList.querySelector('[data-route-stop-id="' + preselectStopId + '"]');
@@ -1093,11 +1132,21 @@
         if (currentEtaStop && startCountdown(currentEtaStop, eta, etaValue, etaMeta)) return;
         stopCountdown();
         if (liveIndicator) liveIndicator.classList.remove("is-hidden");
-        etaValue.textContent = getDisplayValue(eta["eta minutes"], "—") + " min";
-        var distText = formatDistanceAway(eta.distance_km);
-        if (upcomingEl && distText) {
-          upcomingEl.textContent = distText;
-          upcomingEl.classList.remove("is-hidden");
+        if (eta.is_arriving || eta["eta minutes"] === 0) {
+          etaValue.textContent = (role === "start_terminus" || eta.is_departure) ? "Departing" : "Arriving";
+          etaValue.classList.remove("is-ticking");
+          etaValue.classList.add("is-arriving");
+          if (upcomingEl) {
+            upcomingEl.textContent = formatDistanceAway(0.1);
+            upcomingEl.classList.remove("is-hidden");
+          }
+        } else {
+          etaValue.textContent = getDisplayValue(eta["eta minutes"], "—") + " min";
+          var distText = formatDistanceAway(eta.distance_km);
+          if (upcomingEl && distText) {
+            upcomingEl.textContent = distText;
+            upcomingEl.classList.remove("is-hidden");
+          }
         }
         etaMeta.className = eta.traffic_status === "heavy" ? "eta-meta eta-meta-warning" : "eta-meta";
         etaMeta.textContent = eta.message || (buildLiveMetaText(eta) + terminatesSuffix);
@@ -1136,11 +1185,15 @@
         stopCountdown();
         var approxMins = eta["next bus approx mins"] || eta["eta minutes"] || 15;
         if (eta.seen_ago_minutes !== undefined && eta.seen_ago_minutes <= 2) {
-          etaValue.textContent = "Just passed";
-          etaMeta.textContent = "Bus just passed · Next bus in ~" + approxMins + " min" + terminatesSuffix;
+          etaValue.textContent = role === "final_terminus" ? "Just arrived" : "Just passed";
+          etaMeta.textContent = (eta.message || (role === "final_terminus"
+            ? "Bus just arrived · Next bus in ~" + approxMins + " min"
+            : "Bus just passed · Next bus in ~" + approxMins + " min")) + terminatesSuffix;
         } else {
           etaValue.textContent = "~" + approxMins + " min";
-          etaMeta.textContent = (eta.message || ("Bus passed " + formatRelativeAgo(eta.seen_ago_minutes) + " · Next in ~" + approxMins + " min")) + terminatesSuffix;
+          etaMeta.textContent = (eta.message || (role === "final_terminus"
+            ? "Bus arrived " + formatRelativeAgo(eta.seen_ago_minutes) + " · Next in ~" + approxMins + " min"
+            : "Bus passed " + formatRelativeAgo(eta.seen_ago_minutes) + " · Next in ~" + approxMins + " min")) + terminatesSuffix;
         }
         return;
       }
@@ -1301,9 +1354,6 @@
           picker.remove();
           stopCountdown();
           startCooldown();
-          if (sightingResult && sightingResult.active_trip && window.TransitPulseTrip) {
-            window.TransitPulseTrip.start(sightingResult.active_trip);
-          }
           showThankYou(sightingResult && sightingResult.new_badges);
           button.disabled = true;
           button.textContent = "Reported • wait 3 min";

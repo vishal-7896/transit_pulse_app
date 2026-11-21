@@ -1,5 +1,6 @@
 import os
 import json
+import base64
 from functools import wraps
 from flask import request, jsonify, g
 import firebase_admin
@@ -31,15 +32,42 @@ def require_auth(f):
         try:
             if firebase_admin._apps:
                 decoded_token = auth.verify_id_token(token)
-                firebase_uid = decoded_token['uid']
+                firebase_uid = decoded_token.get('uid')
                 verified_phone = decoded_token.get('phone_number')
             else:
-                firebase_uid = token or "local_user"
-                verified_phone = "+910000000000"
+                firebase_uid = None
+                verified_phone = None
+                try:
+                    parts = token.split('.')
+                    if len(parts) >= 2:
+                        payload_b64 = parts[1]
+                        payload_b64 += '=' * (-len(payload_b64) % 4)
+                        payload = json.loads(base64.urlsafe_b64decode(payload_b64.encode('utf-8')).decode('utf-8'))
+                        firebase_uid = payload.get('user_id') or payload.get('sub')
+                        verified_phone = payload.get('phone_number')
+                except Exception:
+                    pass
+                if not firebase_uid:
+                    firebase_uid = token[:64] if token else "local_user"
+                if not verified_phone:
+                    verified_phone = "+910000000000"
 
             with get_session() as session:
-                stmt = select(User).where(User.firebase_uid == firebase_uid)
-                user = session.scalars(stmt).first()
+                user = None
+                if firebase_uid:
+                    user = session.scalars(select(User).where(User.firebase_uid == firebase_uid)).first()
+
+                if not user and verified_phone:
+                    phone_candidates = [verified_phone]
+                    if len(verified_phone) >= 10:
+                        raw_10 = verified_phone[-10:]
+                        phone_candidates.append(raw_10)
+                        phone_candidates.append(f"+91{raw_10}")
+                    user = session.scalars(select(User).where(User.phone.in_(phone_candidates))).first()
+                    if user:
+                        if firebase_uid and user.firebase_uid != firebase_uid:
+                            user.firebase_uid = firebase_uid
+                            session.commit()
 
                 if not user:
                     user = User(
