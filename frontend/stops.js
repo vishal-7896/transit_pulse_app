@@ -53,27 +53,6 @@
     var confirmTripParam = params.get("confirm_trip") === "1";
     var showWaypoints = false;
 
-    function isDelhiCorridor() {
-      var low = String(routeName || "").toLowerCase();
-      return low.indexOf("delhi") !== -1 || low.indexOf("kaushambi") !== -1 || low.indexOf("anand vihar") !== -1;
-    }
-
-    function updateDirectionTerminusNote() {
-      var dirCard = document.querySelector(".direction-card");
-      if (!dirCard || !isDelhiCorridor()) return;
-      var note = document.getElementById("direction-terminus-note");
-      if (!note) {
-        note = document.createElement("p");
-        note.id = "direction-terminus-note";
-        note.className = "direction-terminus-note";
-        dirCard.appendChild(note);
-      }
-      if (selectedDirection === "return") {
-        note.textContent = "From Delhi (Anand Vihar / Kaushambi) · Shuttles & long-haul buses";
-      } else {
-        note.textContent = "Terminus: Delhi (Anand Vihar / Kaushambi) · Shuttles & long-haul buses";
-      }
-    }
 
     var tickTimer = null;
     var refetchTimer = null;
@@ -954,7 +933,6 @@
       document.querySelectorAll(".eta-value").forEach(function (value) {
         value.textContent = "—";
       });
-      updateDirectionTerminusNote();
       updateStopRoles();
     }
 
@@ -1200,8 +1178,17 @@
 
       if (eta.status === "scheduled" || eta.status === "stale" || eta.status === "no data") {
         stopCountdown();
-        var mins = Number.isFinite(eta["eta minutes"]) && eta["eta minutes"] > 0 ? eta["eta minutes"] : 15;
-        etaValue.textContent = "~" + mins + " min";
+        var mins = Number.isFinite(eta["eta minutes"]) ? eta["eta minutes"] : 15;
+        etaValue.textContent = mins <= 0 ? "Due now" : "~" + mins + " min";
+        if (upcomingEl) {
+          if (eta.upcoming_text && eta.upcoming_text.trim() !== "Upcoming:") {
+            upcomingEl.textContent = eta.upcoming_text;
+            upcomingEl.classList.remove("is-hidden");
+          } else {
+            upcomingEl.textContent = "";
+            upcomingEl.classList.add("is-hidden");
+          }
+        }
         etaMeta.textContent = eta.message || ("About " + mins + " min (usual timing)" + terminatesSuffix);
         return;
       }

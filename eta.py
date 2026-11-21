@@ -640,7 +640,16 @@ def calculate_eta(route_stop_id, direction='forward'):
                     "message": msg
                 }
 
-        if sched["is_night"]:
+        origin_order = last_order if direction == 'return' else first_order
+        origin_name_label = "Delhi" if direction == 'return' else "Hapur"
+        cum_travel_sec = span_sum(travel_times, origin_order, user_stop_order)
+        cum_travel_min = max(0, round(cum_travel_sec / 60.0))
+
+        slots = get_corridor_slots()
+        total_mins = now_ist.hour * 60 + now_ist.minute
+
+        if total_mins < 5 * 60:
+            first_arr_str = format_clock_12h(slots[0] + cum_travel_min)
             return {
                 "status": "closed",
                 "clock_time": "NO BUS",
@@ -648,15 +657,53 @@ def calculate_eta(route_stop_id, direction='forward'):
                 "headway_minutes": 0,
                 "is_closed": True,
                 "reports_count": 0,
+                "tier": "Service Closed",
+                "message": f"First bus departs {origin_name_label} at 6:00 AM · Expected at ~{first_arr_str}"
+            }
+
+        scheduled_arrivals = [(s, s + cum_travel_min) for s in slots]
+        upcoming_arrivals = [(orig_s, arr) for orig_s, arr in scheduled_arrivals if arr >= total_mins]
+
+        if upcoming_arrivals:
+            orig_s, next_arr = upcoming_arrivals[0]
+            rem_mins = max(0, next_arr - total_mins)
+            clock_str = format_clock_12h(next_arr)
+            orig_str = format_clock_12h(orig_s)
+
+            if rem_mins == 0:
+                msg = f"Scheduled slot ({orig_str} from {origin_name_label}) · Due now"
+            elif rem_mins == 1:
+                msg = f"Scheduled slot ({orig_str} from {origin_name_label}) · Expected in ~1 min"
+            else:
+                msg = f"Scheduled slot ({orig_str} from {origin_name_label}) · Expected at ~{clock_str}"
+
+            if is_terminus:
+                msg += " · Bus terminates here"
+
+            upcoming_text = ""
+            if len(upcoming_arrivals) > 1:
+                next_few = [format_clock_12h(arr) for _, arr in upcoming_arrivals[1:3]]
+                if next_few:
+                    upcoming_text = "Upcoming: " + " · ".join(next_few)
+
+            return {
+                "status": "scheduled",
+                "eta minutes": rem_mins,
+                "clock_time": clock_str,
+                "upcoming_text": upcoming_text,
+                "headway_minutes": headway_min,
+                "reports_count": 0,
                 "tier": sched["tier"],
-                "message": night_dep_msg
+                "message": msg
             }
 
         return {
-            "status": "scheduled",
-            "eta minutes": headway_min,
-            "headway_minutes": headway_min,
+            "status": "closed",
+            "clock_time": "NO BUS",
+            "eta minutes": 0,
+            "headway_minutes": 0,
+            "is_closed": True,
             "reports_count": 0,
             "tier": sched["tier"],
-            "message": f"About {headway_min} min (usual timing)"
+            "message": night_dep_msg
         }
