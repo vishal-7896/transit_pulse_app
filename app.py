@@ -1,4 +1,6 @@
 import os
+import secrets
+from werkzeug.middleware.proxy_fix import ProxyFix
 try:
     import sentry_sdk
 except ImportError:
@@ -30,7 +32,13 @@ if sentry_dsn and sentry_sdk:
 is_prod = os.getenv("FLASK_ENV") == "production" or os.getenv("RENDER") is not None
 
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", "transitpulse_dev_local_secret_key")
+
+secret_key = os.getenv("SECRET_KEY")
+if is_prod and (not secret_key or secret_key == "transitpulse_dev_local_secret_key"):
+    secret_key = secrets.token_hex(32)
+    print("WARNING: SECRET_KEY not configured in environment. Generated temporary 256-bit key.")
+
+app.secret_key = secret_key or "transitpulse_dev_local_secret_key"
 app.config.update(
     SESSION_COOKIE_SECURE=is_prod,
     SESSION_COOKIE_HTTPONLY=True,
@@ -38,7 +46,14 @@ app.config.update(
     PERMANENT_SESSION_LIFETIME=timedelta(hours=24)
 )
 
-CORS(app)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
+ALLOWED_ORIGINS = [
+    "https://transit-pulse-app.onrender.com",
+    "http://localhost:5000",
+    "http://127.0.0.1:5000"
+]
+CORS(app, origins=ALLOWED_ORIGINS, supports_credentials=True)
 
 limiter = Limiter(
     get_remote_address,
@@ -191,7 +206,7 @@ def check_speed_anti_cheat(session, user_id, current_rs, hop_distances, now_utc)
     dt_sec = (now_utc - last_sighting.seen_at).total_seconds()
     if dist_km > 0.5 and dt_sec > 0:
         implied_kmh = dist_km / (dt_sec / 3600.0)
-        if implied_kmh > 110.0:
+        if implied_kmh > 85.0:
             return False, round(implied_kmh, 1)
 
     return True, None
@@ -445,6 +460,29 @@ def post_sighting():
         if 1 <= ist_now.hour < 4:
             return jsonify({"error": "Sightings are paused between 1:00 AM and 4:00 AM IST."}), 400
 
+        one_min_ago = now_utc - timedelta(seconds=60)
+        recent_stop_sighting = session.scalars(
+            select(Sighting)
+            .where(
+                Sighting.route_stop_id == route_stop_id,
+                Sighting.seen_at > one_min_ago
+            )
+            .order_by(Sighting.seen_at.desc())
+        ).first()
+
+        if recent_stop_sighting and recent_stop_sighting.direction != direction:
+            return jsonify({"error": "Conflicting sighting direction reported at this stop within the last minute."}), 400
+
+        recent_stop_count = session.scalar(
+            select(func.count(Sighting.id))
+            .where(
+                Sighting.route_stop_id == route_stop_id,
+                Sighting.seen_at > one_min_ago
+            )
+        ) or 0
+        if recent_stop_count >= 5:
+            return jsonify({"error": "Stop sighting threshold reached for this minute. Please wait."}), 429
+
         route_stops = session.scalars(
             select(RouteStop)
             .where(RouteStop.route_id == current_rs.route_id)
@@ -656,18 +694,16 @@ def get_accuracy_metrics():
 
 
 @app.route('/favorites', methods=['GET'])
+@require_auth
 def get_favorites():
-    user_id = request.args.get('user_id')
-    if not user_id:
-        return jsonify([])
-
+    user_id = g.current_user['id']
     with get_session() as session:
         stmt = (
             select(RouteStop, Route, Stop)
             .join(UserFavorite, UserFavorite.route_stop_id == RouteStop.id)
             .join(Route, RouteStop.route_id == Route.id)
             .join(Stop, RouteStop.stop_id == Stop.id)
-            .where(UserFavorite.user_id == int(user_id))
+            .where(UserFavorite.user_id == user_id)
             .order_by(UserFavorite.created_at.desc())
         )
         rows = session.execute(stmt).all()
@@ -682,22 +718,21 @@ def get_favorites():
 
 @app.route('/favorites/toggle', methods=['POST'])
 @limiter.limit("30 per minute")
+@require_auth
 def toggle_favorite():
     data = request.get_json(silent=True) or {}
-    raw_user_id = data.get('user_id')
     raw_route_stop_id = data.get('route_stop_id')
 
     try:
-        user_id = int(raw_user_id)
         route_stop_id = int(raw_route_stop_id)
-        if user_id <= 0 or route_stop_id <= 0:
-            return jsonify({"error": "user_id and route_stop_id must be positive integers"}), 400
+        if route_stop_id <= 0:
+            return jsonify({"error": "Invalid route_stop_id"}), 400
     except (ValueError, TypeError):
-        return jsonify({"error": "user_id and route_stop_id must be valid integers"}), 400
+        return jsonify({"error": "route_stop_id must be a valid integer"}), 400
+
+    user_id = g.current_user['id']
 
     with get_session() as session:
-        if not session.get(User, user_id):
-            return jsonify({"error": "User not found"}), 404
         if not session.get(RouteStop, route_stop_id):
             return jsonify({"error": "RouteStop not found"}), 404
 
@@ -721,7 +756,7 @@ def toggle_favorite():
             session.rollback()
             if sentry_sdk:
                 sentry_sdk.capture_exception(e)
-            return jsonify({"error": "Failed to update favorite due to a database error."}), 500
+            return jsonify({"error": "Failed to update favorite."}), 500
 
 
 @app.route('/register', methods=['POST'])

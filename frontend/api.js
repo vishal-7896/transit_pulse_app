@@ -34,13 +34,14 @@
         timeoutMs: 15000
       });
     },
-    getFavorites: function (userId) {
-      return request("/favorites?user_id=" + encodeURIComponent(String(userId)));
+    getFavorites: function () {
+      return request("/favorites");
     },
-    toggleFavorite: function (userId, routeStopId) {
+    toggleFavorite: function (userIdOrRouteStopId, maybeRouteStopId) {
+      var routeStopId = maybeRouteStopId !== undefined ? maybeRouteStopId : userIdOrRouteStopId;
       return request("/favorites/toggle", {
         method: "POST",
-        body: { user_id: userId, route_stop_id: routeStopId }
+        body: { route_stop_id: routeStopId }
       });
     },
     getProfile: function () {

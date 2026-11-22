@@ -144,8 +144,10 @@ if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg2://", 1)
 elif DATABASE_URL.startswith("postgresql://") and not DATABASE_URL.startswith("postgresql+psycopg2://"):
     DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
-engine = create_engine(DATABASE_URL,pool_pre_ping=True,
-    pool_recycle=300)
+engine_kwargs = {"pool_pre_ping": True, "pool_recycle": 300}
+if not DATABASE_URL.startswith("sqlite"):
+    engine_kwargs.update({"pool_size": 3, "max_overflow": 2, "pool_timeout": 30})
+engine = create_engine(DATABASE_URL, **engine_kwargs)
 Base.metadata.create_all(engine)
 
 def ensure_schema_columns(target_engine):
