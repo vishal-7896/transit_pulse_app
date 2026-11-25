@@ -42,15 +42,20 @@
   <main class="mobile-shell">
     <a class="back-link" href="index.html">← Back</a>
 
+    <div class="auth-tabs" role="tablist" aria-label="Authentication mode">
+      <button type="button" class="auth-tab is-active" id="tab-signup" role="tab" aria-selected="true">Sign up</button>
+      <button type="button" class="auth-tab" id="tab-login" role="tab" aria-selected="false">Log in</button>
+    </div>
+
     <section class="form-hero">
-      <h1>Log in or sign up</h1>
-      <p>Enter your mobile number to access your existing profile or create a new one.</p>
+      <h1 id="auth-title">Create your account</h1>
+      <p id="auth-subtitle">Enter your name and mobile number to star frequent stops and get live ETAs.</p>
     </section>
 
     <section class="surface-card">
       <form id="register-form" novalidate>
         <div class="form-group" id="name-group">
-          <label for="name-input">Your name <span class="muted-label">(optional if logging in)</span></label>
+          <label for="name-input" id="name-label">Full Name</label>
           <input
             type="text"
             id="name-input"
@@ -62,7 +67,7 @@
         </div>
 
         <div class="form-group" id="phone-group">
-          <label for="phone-input">Phone number</label>
+          <label for="phone-input">Mobile Number</label>
           <input
             type="tel"
             id="phone-input"
@@ -71,13 +76,12 @@
             inputmode="numeric"
             maxlength="10"
             pattern="[0-9]{10}"
-            placeholder="Mobile number"
+            placeholder="10-digit mobile number"
             required
           >
-          <p class="field-hint">Enter 10 digits </p>
+          <p class="field-hint">Enter 10 digits</p>
         </div>
 
-        
         <div class="form-group is-hidden" id="otp-group">
           <label for="otp-input">Enter 6-digit OTP</label>
           <input
@@ -90,15 +94,19 @@
           <p class="field-hint">Enter the 6-digit code sent to your phone.</p>
         </div>
 
-        
         <div id="recaptcha-container"></div>
 
-        <p class="privacy-consent-text">By continuing, you agree to TransitPulse storing your phone number to authenticate your profile under India’s DPDP Act. We never share or sell your data.</p>
+        <p class="privacy-consent-text" id="privacy-consent">By creating an account, you agree to TransitPulse storing your phone number to authenticate your profile under India’s DPDP Act. We never share or sell your data.</p>
 
         <button type="submit" class="wide-button wide-button-primary" id="register-btn">
-          <span class="button-label">Send OTP</span>
+          <span class="button-label" id="register-btn-label">Send OTP</span>
           <span class="button-spinner" aria-hidden="true"></span>
         </button>
+
+        <div class="auth-switch-note" id="auth-switch-note">
+          <span id="auth-switch-text">Already have an account?</span>
+          <button type="button" class="auth-switch-link" id="auth-switch-btn">Log in</button>
+        </div>
 
         <div class="message-box is-hidden" id="register-message" role="status" aria-live="polite"></div>
       </form>
@@ -107,7 +115,7 @@
     <section class="returning-card" id="returning-card">
       <div>
         <p class="returning-title">Already registered on this browser?</p>
-        <p class="returning-copy">You can continue without registering again.</p>
+        <p class="returning-copy">You can continue without logging in again.</p>
       </div>
       <a class="text-button" href="routes.html">Continue →</a>
     </section>

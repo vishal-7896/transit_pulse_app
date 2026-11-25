@@ -3,17 +3,106 @@
 
   document.addEventListener("DOMContentLoaded", function () {
     var form = document.getElementById("register-form");
+    var tabSignup = document.getElementById("tab-signup");
+    var tabLogin = document.getElementById("tab-login");
+    var authTitle = document.getElementById("auth-title");
+    var authSubtitle = document.getElementById("auth-subtitle");
+    var nameGroup = document.getElementById("name-group");
     var nameInput = document.getElementById("name-input");
     var phoneInput = document.getElementById("phone-input");
     var otpInput = document.getElementById("otp-input");
     var otpGroup = document.getElementById("otp-group");
+    var privacyConsent = document.getElementById("privacy-consent");
     var registerButton = document.getElementById("register-btn");
+    var buttonLabel = document.getElementById("register-btn-label");
+    var authSwitchText = document.getElementById("auth-switch-text");
+    var authSwitchBtn = document.getElementById("auth-switch-btn");
     var messageBox = document.getElementById("register-message");
 
     if (!form || !phoneInput || !registerButton || !messageBox) return;
 
-    var confirmationResult = null; 
-    var step = "phone"; 
+    var mode = "signup";
+    var confirmationResult = null;
+    var step = "phone";
+
+    function setMode(newMode) {
+      mode = newMode === "login" ? "login" : "signup";
+      TransitPulseUI.clearMessage(messageBox);
+
+      if (step === "otp") {
+        step = "phone";
+        if (otpGroup) otpGroup.classList.add("is-hidden");
+        phoneInput.disabled = false;
+        if (nameInput) nameInput.disabled = false;
+        if (otpInput) otpInput.value = "";
+      }
+
+      if (mode === "signup") {
+        document.title = "TransitPulse — Sign Up";
+        if (tabSignup) {
+          tabSignup.classList.add("is-active");
+          tabSignup.setAttribute("aria-selected", "true");
+        }
+        if (tabLogin) {
+          tabLogin.classList.remove("is-active");
+          tabLogin.setAttribute("aria-selected", "false");
+        }
+        if (authTitle) authTitle.textContent = "Create your account";
+        if (authSubtitle) authSubtitle.textContent = "Enter your name and mobile number to star frequent stops and get live ETAs.";
+        if (nameGroup) nameGroup.classList.remove("is-hidden");
+        if (nameInput) nameInput.required = true;
+        if (privacyConsent) privacyConsent.classList.remove("is-hidden");
+        if (authSwitchText) authSwitchText.textContent = "Already have an account?";
+        if (authSwitchBtn) authSwitchBtn.textContent = "Log in";
+        setSubmitting(false, step === "otp" ? "Verify & Create Account" : "Send OTP");
+      } else {
+        document.title = "TransitPulse — Log In";
+        if (tabLogin) {
+          tabLogin.classList.add("is-active");
+          tabLogin.setAttribute("aria-selected", "true");
+        }
+        if (tabSignup) {
+          tabSignup.classList.remove("is-active");
+          tabSignup.setAttribute("aria-selected", "false");
+        }
+        if (authTitle) authTitle.textContent = "Welcome back";
+        if (authSubtitle) authSubtitle.textContent = "Enter your mobile number to access your starred stops and profile.";
+        if (nameGroup) nameGroup.classList.add("is-hidden");
+        if (nameInput) nameInput.required = false;
+        if (privacyConsent) privacyConsent.classList.add("is-hidden");
+        if (authSwitchText) authSwitchText.textContent = "New to TransitPulse?";
+        if (authSwitchBtn) authSwitchBtn.textContent = "Sign up free";
+        setSubmitting(false, step === "otp" ? "Verify & Log In" : "Send OTP");
+      }
+
+      try {
+        var url = new URL(window.location.href);
+        url.searchParams.set("mode", mode);
+        window.history.replaceState({}, "", url.toString());
+      } catch (e) {}
+    }
+
+    var initialParams = new URLSearchParams(window.location.search);
+    var initialMode = (initialParams.get("mode") || "").toLowerCase();
+    setMode(initialMode === "login" ? "login" : "signup");
+
+    if (tabSignup) {
+      tabSignup.addEventListener("click", function () {
+        if (mode !== "signup") setMode("signup");
+      });
+    }
+
+    if (tabLogin) {
+      tabLogin.addEventListener("click", function () {
+        if (mode !== "login") setMode("login");
+      });
+    }
+
+    if (authSwitchBtn) {
+      authSwitchBtn.addEventListener("click", function () {
+        setMode(mode === "signup" ? "login" : "signup");
+      });
+    }
 
     function ensureRecaptcha() {
       if (!window.recaptchaVerifier && window.firebase && window.firebase.auth) {
@@ -46,10 +135,16 @@
       event.preventDefault();
       TransitPulseUI.clearMessage(messageBox);
 
-      var enteredName = nameInput.value.trim();
+      var enteredName = nameInput ? nameInput.value.trim() : "";
       var phone = phoneInput.value.trim();
 
       if (step === "phone") {
+        if (mode === "signup" && !enteredName) {
+          TransitPulseUI.showMessage(messageBox, "Please enter your name.", "error");
+          if (nameInput) nameInput.focus();
+          return;
+        }
+
         if (!/^[6-9]\d{9}$/.test(phone)) {
           TransitPulseUI.showMessage(messageBox, "Please enter a valid 10-digit Indian mobile number starting with 6, 7, 8, or 9.", "error");
           phoneInput.focus();
@@ -101,12 +196,12 @@
 
           sessionStorage.setItem("tp_otp_cooldown_at", String(Date.now()));
           step = "otp";
-          otpGroup.classList.remove("is-hidden");
+          if (otpGroup) otpGroup.classList.remove("is-hidden");
           phoneInput.disabled = true;
-          nameInput.disabled = true;
-          setSubmitting(false, "Verify & Continue");
+          if (nameInput) nameInput.disabled = true;
+          setSubmitting(false, mode === "signup" ? "Verify & Create Account" : "Verify & Log In");
           TransitPulseUI.showMessage(messageBox, "OTP sent to +91 " + phone + ". Enter it below.", "success");
-          otpInput.focus();
+          if (otpInput) otpInput.focus();
         } catch (error) {
           console.error("Firebase sendOtp error:", error);
           if (window.recaptchaVerifier && window.recaptchaVerifier.clear) {
@@ -120,10 +215,10 @@
       }
 
       if (step === "otp") {
-        var otp = otpInput.value.trim();
+        var otp = otpInput ? otpInput.value.trim() : "";
         if (!/^\d{6}$/.test(otp)) {
           TransitPulseUI.showMessage(messageBox, "Please enter the 6-digit OTP.", "error");
-          otpInput.focus();
+          if (otpInput) otpInput.focus();
           return;
         }
 
@@ -131,16 +226,20 @@
 
         try {
           var userCredential = await confirmationResult.confirm(otp);
-          var regPayload = enteredName ? { name: enteredName } : {};
+          var regPayload = (mode === "signup" && enteredName) ? { name: enteredName } : {};
           var response = await TransitPulseAPI.register(regPayload);
 
           if (!response || response.user_id === undefined) {
-            throw new Error("Registration succeeded with Firebase, but Flask failed to link profile.");
+            throw new Error("Registration succeeded with Firebase, but server failed to link profile.");
           }
 
-          var savedName = (response.user && response.user.name) || enteredName || "Commuter";
+          var savedName = (response.user && response.user.name) || (mode === "signup" ? enteredName : "") || "Commuter";
           TransitPulseStorage.saveUser(response.user_id, savedName);
-          TransitPulseUI.showMessage(messageBox, "Verified! Opening your routes...", "success");
+          TransitPulseUI.showMessage(
+            messageBox,
+            mode === "signup" ? "Account created! Opening your routes..." : "Welcome back! Opening your routes...",
+            "success"
+          );
 
           var urlParams = new URLSearchParams(window.location.search);
           var returnUrl = urlParams.get("return");
@@ -151,7 +250,7 @@
         } catch (error) {
           console.error("Verification error:", error);
           TransitPulseUI.showMessage(messageBox, error.message || "Invalid OTP code. Please try again.", "error");
-          setSubmitting(false, "Verify & Continue");
+          setSubmitting(false, mode === "signup" ? "Verify & Create Account" : "Verify & Log In");
         }
       }
     });
@@ -159,7 +258,7 @@
     function setSubmitting(isSubmitting, labelText) {
       registerButton.disabled = isSubmitting;
       registerButton.classList.toggle("is-busy", isSubmitting);
-      var label = registerButton.querySelector(".button-label");
+      var label = buttonLabel || registerButton.querySelector(".button-label");
       if (label && labelText) label.textContent = labelText;
     }
   });
