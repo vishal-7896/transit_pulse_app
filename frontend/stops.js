@@ -14,6 +14,30 @@
 
     var userId = TransitPulseStorage.getUserId();
 
+    var qrBanner = document.getElementById("commuter-qr-banner");
+    var qrCloseBtn = document.getElementById("commuter-qr-close-btn");
+    var qrDismissBtn = document.getElementById("commuter-qr-dismiss-btn");
+    var qrSignupLink = document.getElementById("commuter-qr-signup-link");
+
+    if (qrBanner && !userId) {
+      var isDismissed = sessionStorage.getItem("tp_dismiss_commuter_banner") === "1";
+      if (!isDismissed) {
+        qrBanner.classList.remove("is-hidden");
+        if (qrSignupLink) {
+          var returnPath = window.location.pathname.split("/").pop() + window.location.search;
+          qrSignupLink.href = "register.html?mode=signup&return=" + encodeURIComponent(returnPath);
+        }
+      }
+      function dismissQrBanner() {
+        qrBanner.classList.add("is-hidden");
+        try {
+          sessionStorage.setItem("tp_dismiss_commuter_banner", "1");
+        } catch (e) {}
+      }
+      if (qrCloseBtn) qrCloseBtn.addEventListener("click", dismissQrBanner);
+      if (qrDismissBtn) qrDismissBtn.addEventListener("click", dismissQrBanner);
+    }
+
     var params = new URLSearchParams(window.location.search);
     var routeId = params.get("route_id");
     var routeName = params.get("route_name");
