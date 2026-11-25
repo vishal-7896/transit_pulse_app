@@ -45,7 +45,14 @@
     <section class="home-hero" aria-labelledby="brand-title">
       <header class="top-bar">
         <span class="brand-mini">TransitPulse</span>
-        <a class="ghost-button js-top-link" href="register.html">Log in</a>
+        <div class="top-bar-auth" id="top-bar-auth">
+          <a class="top-bar-login-link js-login-link" href="register.html?mode=login">Log in</a>
+          <a class="top-bar-signup-btn js-signup-link" href="register.html?mode=signup">Sign up</a>
+        </div>
+        <a class="top-bar-profile-link is-hidden js-profile-link" href="profile.html">
+          <span class="top-avatar-dot js-user-initial">C</span>
+          <span class="js-user-name">Profile</span>
+        </a>
       </header>
 
       <h1 id="brand-title">Know when your bus is <em>coming.</em></h1>
@@ -67,6 +74,7 @@
         <a class="action-button action-button-secondary js-secondary-cta" href="#what-is">How it works</a>
       </div>
       <div class="landing-message" role="status" aria-live="polite"></div>
+
       <a class="scroll-hint" href="#what-is">See how it works ↓</a>
     </section>
 
